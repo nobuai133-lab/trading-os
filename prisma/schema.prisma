@@ -169,3 +169,115 @@ model Notification {
   success   Boolean  @default(true)
   error     String?
 }
+
+// Immutable audit log — append-only, never updated or deleted
+model AuditLog {
+  id            Int      @id @default(autoincrement())
+  ts            DateTime @default(now())
+  action        String   // AuditAction enum value
+  actor         String   // service name or 'webhook' | 'cron' | 'api'
+  resource      String?  // e.g. tradeId, setupId
+  correlationId String
+  detail        Json     @default("{}")
+
+  @@index([correlationId])
+  @@index([action, ts])
+}
+
+// Health snapshot written by HealthService on each /api/v1/health/ready call
+model SystemHealth {
+  id            Int      @id @default(autoincrement())
+  ts            DateTime @default(now())
+  status        String   // ok | degraded | down
+  dbOk          Boolean
+  dbLatencyMs   Int
+  activeProvider String
+  providerHealth Json    @default("[]")
+
+  @@index([ts])
+}
+
+// Lifecycle event log for a trade — one row per state transition
+model TradeLifecycle {
+  id            Int      @id @default(autoincrement())
+  tradeId       String
+  ts            DateTime @default(now())
+  fromStatus    String
+  toStatus      String
+  event         String   // ENTRY_TRIGGERED | TP1_HIT | TP2_HIT | TP3_HIT | SL_HIT | MANUAL_CLOSE
+  price         Float?
+  correlationId String
+  detail        Json     @default("{}")
+
+  @@index([tradeId, ts])
+}
+
+// Single-row shadow verification metrics accumulator (id is always 1)
+model KernelMetrics {
+  id                   Int       @id
+  totalWebhookEvents   Int       @default(0)
+  totalKernelEvents    Int       @default(0)
+  kernelTransitions    Int       @default(0)
+  criticalDivergences  Int       @default(0)
+  warningDivergences   Int       @default(0)
+  infoDivergences      Int       @default(0)
+  snapshotCount        Int       @default(0)
+  totalLatencyMs       Float     @default(0)
+  latencySamples       Int       @default(0)
+  lastLatencyMs        Float     @default(0)
+  lastSnapshotSeq      BigInt?
+  firstEventAt         DateTime  @default(now())
+  lastEventAt          DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+// Classified divergence events between Kernel shadow and SystemState
+model KernelDivergenceLog {
+  id                Int      @id @default(autoincrement())
+  ts                DateTime @default(now())
+  severity          String   // INFO | WARNING | CRITICAL
+  correlationId     String
+  kernelMode        String
+  systemMode        String
+  kernelTradePhase  String?
+  systemTradeStatus String?
+  kernelTradeActive Boolean
+  systemTradeActive Boolean
+  detail            Json     @default("{}")
+
+  @@index([severity, ts])
+  @@index([correlationId])
+}
+
+// Immutable event log — the single source of truth for Core State Kernel.
+// Never updated or deleted. seq is a global monotonic counter.
+model KernelEvent {
+  id            String   @id
+  seq           BigInt   @unique
+  previousSeq   BigInt
+  ts            DateTime
+  correlationId String
+  sessionId     String
+  source        String
+  domain        String
+  type          String
+  version       Int      @default(1)
+  tradeId       String?
+  setupId       String?
+  payload       Json     @default("{}")
+
+  @@index([correlationId])
+  @@index([domain, type])
+  @@index([tradeId])
+}
+
+// Periodic full-state snapshots — enables fast recovery without replaying all events.
+model KernelSnapshot {
+  id         String   @id
+  seq        BigInt   @unique
+  createdAt  DateTime
+  eventCount Int
+  state      Json
+
+  @@index([seq])
+}

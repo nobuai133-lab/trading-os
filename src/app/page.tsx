@@ -13,6 +13,12 @@ import ScannerPanel      from '@/components/dashboard/ScannerPanel';
 import ActiveTradePanel  from '@/components/dashboard/ActiveTradePanel';
 import RiskPanel         from '@/components/dashboard/RiskPanel';
 import PostTradeReview   from '@/components/dashboard/PostTradeReview';
+import DecisionCard           from '@/components/dashboard/DecisionCard';
+import MemoryIntelligenceCard from '@/components/dashboard/MemoryIntelligenceCard';
+import RiskOfficePanel        from '@/components/dashboard/RiskOfficePanel';
+import PaperPositionsPanel     from '@/components/dashboard/PaperPositionsPanel';
+import ReplayPanel             from '@/components/dashboard/ReplayPanel';
+import BacktestPanel           from '@/components/dashboard/BacktestPanel';
 
 export default function Home() {
   const { state, setState } = useTradeStore();
@@ -43,9 +49,23 @@ export default function Home() {
 
         {/* ── Mobile: 4-tab panels ── */}
         <div className="md:hidden mt-2">
-          {activeTab === 'scanner' && <ScannerPanel     state={state} />}
+          {activeTab === 'scanner' && (
+            <div className="space-y-3">
+              <MemoryIntelligenceCard />
+              <DecisionCard />
+              <ScannerPanel state={state} />
+            </div>
+          )}
           {activeTab === 'active'  && <ActiveTradePanel state={state} />}
-          {activeTab === 'risk'    && <RiskPanel         state={state} />}
+          {activeTab === 'risk'    && (
+            <div className="space-y-3">
+              <RiskOfficePanel />
+              <PaperPositionsPanel />
+              <ReplayPanel />
+              <BacktestPanel />
+              <RiskPanel state={state} />
+            </div>
+          )}
           {activeTab === 'review'  && <PostTradeReview   state={state} />}
         </div>
 
@@ -58,11 +78,17 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ── Desktop: 3-col split — Scanner | Active | Risk+Review ── */}
+        {/* ── Desktop: 3-col split — Scanner | Active | Memory+Decision+RiskOffice+Risk+Review ── */}
         <div className="hidden lg:grid grid-cols-[1.1fr_1fr_1fr] gap-3 mt-2">
           <ScannerPanel state={state} />
           <ActiveTradePanel state={state} />
           <div className="space-y-3">
+            <MemoryIntelligenceCard />
+            <DecisionCard />
+            <RiskOfficePanel />
+            <PaperPositionsPanel />
+            <ReplayPanel />
+            <BacktestPanel />
             <RiskPanel        state={state} />
             <PostTradeReview  state={state} />
           </div>
