@@ -171,4 +171,37 @@ describe('setupValidityEngine', () => {
     expect(r.actionability).toBe('CONFIRMATION_REQUIRED');
     expect(r.trendAlignment).toBe('CONFLICT');
   });
+
+  // SV-15: 4H WATCH_ONLY counter-trend (CONFLICT) expires after 8h — Step 5b
+  it('SV-15: 4H WATCH_ONLY CONFLICT setup at 9h → EXPIRED via WATCH_ONLY accelerated expiry', () => {
+    const AGE_9H = new Date(Date.now() - 9 * 60 * 60_000).toISOString();
+    const r = assessSetupValidity(base({ htfBias: 'BEARISH', ltfBias: 'BEARISH', createdAt: AGE_9H }));
+    expect(r.validity).toBe('EXPIRED');
+    expect(r.blocked).toBe(true);
+    expect(r.actionability).toBe('INVALID');
+    expect(r.expiryReason).toBeTruthy();
+  });
+
+  // SV-16: 4H aligned VALID setup not expired at 20h (full max is 24h)
+  it('SV-16: 4H aligned VALID setup at 20h → still VALID (not expired)', () => {
+    const AGE_20H = new Date(Date.now() - 20 * 60 * 60_000).toISOString();
+    const r = assessSetupValidity(base({ createdAt: AGE_20H }));
+    expect(r.validity).toBe('VALID');
+    expect(r.blocked).toBe(false);
+    expect(r.actionability).toBe('READY');
+  });
+
+  // SV-17: 1H counter-trend expires after 2 candles (2h) — Step 5c fires before WATCH_ONLY 3h limit
+  it('SV-17: 1H CONFLICT setup at 2.5h → EXPIRED via 2-candle counter-trend rule (before 3h WATCH_ONLY limit)', () => {
+    const AGE_2_5H = new Date(Date.now() - 2.5 * 60 * 60_000).toISOString();
+    const r = assessSetupValidity(base({
+      htfBias: 'BEARISH', ltfBias: 'BEARISH',
+      timeframe: '1H',
+      createdAt: AGE_2_5H,
+    }));
+    expect(r.validity).toBe('EXPIRED');
+    expect(r.blocked).toBe(true);
+    // expiryReason identifies this as the counter-trend rule, not the WATCH_ONLY time limit
+    expect(r.expiryReason).toMatch(/Counter-trend/);
+  });
 });

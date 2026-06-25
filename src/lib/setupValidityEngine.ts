@@ -6,7 +6,7 @@ import { validateCounterTrend } from './counterTrendValidator';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MAX_AGE_MS: Record<string, number> = {
+export const MAX_AGE_MS: Record<string, number> = {
   '1m':  45 * 60_000,
   '5m':  2  * 60 * 60_000,
   '15m': 90 * 60_000,
@@ -16,7 +16,36 @@ const MAX_AGE_MS: Record<string, number> = {
   '1D':  3  * 24 * 60 * 60_000,
   '1W':  7  * 24 * 60 * 60_000,
 };
-const DEFAULT_MAX_AGE_MS = 24 * 60 * 60_000;
+export const DEFAULT_MAX_AGE_MS = 24 * 60 * 60_000;
+
+// WATCH_ONLY setups expire faster — these limits apply when actionability is WATCHING
+export const WATCH_ONLY_MAX_AGE_MS: Record<string, number> = {
+  '1m':  20 * 60_000,
+  '5m':  45 * 60_000,
+  '15m': 45 * 60_000,
+  '30m': 90 * 60_000,
+  '1H':  3  * 60 * 60_000,
+  '4H':  8  * 60 * 60_000,
+  '1D':  24 * 60 * 60_000,
+  '1W':  3  * 24 * 60 * 60_000,
+};
+const DEFAULT_WATCH_ONLY_MAX_AGE_MS = 8 * 60 * 60_000;
+
+// Candle duration per timeframe — used for counter-trend 2-candle expiry rule
+export const CANDLE_DURATION_MS: Record<string, number> = {
+  '1m':  60_000,
+  '5m':  5  * 60_000,
+  '15m': 15 * 60_000,
+  '30m': 30 * 60_000,
+  '1H':  60 * 60_000,
+  '4H':  4  * 60 * 60_000,
+  '1D':  24 * 60 * 60_000,
+  '1W':  7  * 24 * 60 * 60_000,
+};
+const DEFAULT_CANDLE_DURATION_MS = 4 * 60 * 60_000;
+
+// Counter-trend setup expires after this many candles if confirmations < 4
+const COUNTER_TREND_EXPIRY_CANDLES = 2;
 
 // Six reversal confirmations required for a counter-trend setup to be actionable
 export const REVERSAL_CONFIRMATIONS = [
@@ -106,15 +135,21 @@ export function assessSetupValidity(input: SetupValidityInput): SetupValidityRes
     createdAt, timeframe, signalGrade,
   } = input;
 
-  const createdMs  = new Date(createdAt).getTime();
-  const nowMs      = Date.now();
-  const ageMs      = nowMs - createdMs;
-  const ageMinutes = Math.round(ageMs / 60_000);
-  const maxAgeMs   = MAX_AGE_MS[timeframe] ?? DEFAULT_MAX_AGE_MS;
-  const expiryTime = new Date(createdMs + maxAgeMs).toISOString();
+  const createdMs       = new Date(createdAt).getTime();
+  const nowMs           = Date.now();
+  const ageMs           = nowMs - createdMs;
+  const ageMinutes      = Math.round(ageMs / 60_000);
+  const maxAgeMs        = MAX_AGE_MS[timeframe]           ?? DEFAULT_MAX_AGE_MS;
+  const woMaxAgeMs      = WATCH_ONLY_MAX_AGE_MS[timeframe] ?? DEFAULT_WATCH_ONLY_MAX_AGE_MS;
+  const candleDurationMs = CANDLE_DURATION_MS[timeframe]  ?? DEFAULT_CANDLE_DURATION_MS;
+  const ctMaxAgeMs      = COUNTER_TREND_EXPIRY_CANDLES * candleDurationMs;
 
-  // ── Step 1: Expiry ──────────────────────────────────────────────────────────
+  const hardExpiryTime = new Date(createdMs + maxAgeMs).toISOString();
+  const woExpiryTime   = new Date(createdMs + woMaxAgeMs).toISOString();
+
+  // ── Step 1: Hard expiry — exceeds full max age ──────────────────────────────
   if (ageMs > maxAgeMs) {
+    const expiryReason = `Setup exceeded ${timeframe} max age (${Math.round(maxAgeMs / 60_000)}m)`;
     return {
       validity:               'EXPIRED',
       trendAlignment:         'ALIGNED',
@@ -124,9 +159,11 @@ export function assessSetupValidity(input: SetupValidityInput): SetupValidityRes
       requiredConfirmations:  [],
       satisfiedConfirmations: [],
       missingConfirmations:   [],
-      expiryTime,
+      expiryTime:             hardExpiryTime,
+      hardExpiryTime,
       ageMinutes,
       reason:                 `Setup expired — age ${ageMinutes}m exceeds ${timeframe} max (${Math.round(maxAgeMs / 60_000)}m)`,
+      expiryReason,
       entryZoneSource,
       entryZoneReason:        'Setup expired — entry zone no longer valid',
       blocked:                true,
@@ -283,6 +320,62 @@ export function assessSetupValidity(input: SetupValidityInput): SetupValidityRes
     }
   }
 
+  // ── Step 5b: WATCH_ONLY accelerated expiry ─────────────────────────────────
+  // WATCHING setups expire faster than VALID/CONFIRMATION_REQUIRED setups.
+  if (actionability === 'WATCHING' && ageMs > woMaxAgeMs) {
+    const expiryReason = `Watch-only ${timeframe} setup exceeded ${Math.round(woMaxAgeMs / 60_000)}m limit — rescan required`;
+    return {
+      validity:               'EXPIRED',
+      trendAlignment,
+      actionability:          'INVALID',
+      confidenceCap:          0,
+      gradeCap:               '—',
+      requiredConfirmations:  trendAlignment === 'ALIGNED' ? [] : requiredConfs,
+      satisfiedConfirmations: trendAlignment === 'ALIGNED' ? [] : satisfied,
+      missingConfirmations:   trendAlignment === 'ALIGNED' ? [] : missing,
+      expiryTime:             woExpiryTime,
+      hardExpiryTime,
+      ageMinutes,
+      reason:                 `Watch-only setup expired — age ${ageMinutes}m exceeds ${timeframe} WATCH_ONLY limit (${Math.round(woMaxAgeMs / 60_000)}m)`,
+      expiryReason,
+      entryZoneSource,
+      entryZoneReason:        'Watch-only setup expired — conditions not confirmed within time limit',
+      blocked:                true,
+    };
+  }
+
+  // ── Step 5c: Counter-trend fast expiry — 2 candles without sufficient confirmations ──
+  // Counter-trend/conflict setups with < 4 confirmations expire after 2 candles.
+  const isCounterTrendSetup = trendAlignment === 'COUNTER_TREND' || trendAlignment === 'CONFLICT';
+  if (
+    isCounterTrendSetup &&
+    actionability === 'WATCHING' &&
+    satisfied.length < 4 &&
+    ageMs > ctMaxAgeMs
+  ) {
+    const ctCandles = COUNTER_TREND_EXPIRY_CANDLES;
+    const ctMaxMin  = Math.round(ctMaxAgeMs / 60_000);
+    const expiryReason = `Counter-trend ${direction} — ${satisfied.length}/4 confirmations after ${ctCandles} candles (${ctMaxMin}m)`;
+    return {
+      validity:               'EXPIRED',
+      trendAlignment,
+      actionability:          'INVALID',
+      confidenceCap:          0,
+      gradeCap:               '—',
+      requiredConfirmations:  requiredConfs,
+      satisfiedConfirmations: satisfied,
+      missingConfirmations:   missing,
+      expiryTime:             new Date(createdMs + ctMaxAgeMs).toISOString(),
+      hardExpiryTime,
+      ageMinutes,
+      reason:                 `Counter-trend setup expired — only ${satisfied.length} confirmations after ${ctCandles} ${timeframe} candles`,
+      expiryReason,
+      entryZoneSource,
+      entryZoneReason:        'Counter-trend setup expired without reversal confirmation',
+      blocked:                true,
+    };
+  }
+
   // ── Step 6: Entry zone source validation ───────────────────────────────────
   let entryZoneReason: string;
   const zoneAbovePrice = entryZoneLow > currentPrice;
@@ -312,6 +405,9 @@ export function assessSetupValidity(input: SetupValidityInput): SetupValidityRes
     entryZoneReason = `Entry zone $${entryZoneLow}–$${entryZoneHigh} — source: ${entryZoneSource.toLowerCase().replace(/_/g, ' ')}`;
   }
 
+  // Effective expiry: WATCHING uses shorter WATCH_ONLY limit; VALID/CONFIRMATION_REQUIRED uses full max
+  const effectiveExpiryTime = actionability === 'WATCHING' ? woExpiryTime : hardExpiryTime;
+
   return {
     validity,
     trendAlignment,
@@ -321,7 +417,8 @@ export function assessSetupValidity(input: SetupValidityInput): SetupValidityRes
     requiredConfirmations:  trendAlignment === 'ALIGNED' ? [] : requiredConfs,
     satisfiedConfirmations: trendAlignment === 'ALIGNED' ? [] : satisfied,
     missingConfirmations:   trendAlignment === 'ALIGNED' ? [] : missing,
-    expiryTime,
+    expiryTime:             effectiveExpiryTime,
+    hardExpiryTime,
     ageMinutes,
     reason,
     entryZoneSource,

@@ -77,6 +77,19 @@ function formatAge(minutes: number): string {
   return `${Math.round(minutes / 1440)}d`;
 }
 
+function formatCountdown(isoStr: string): string {
+  const diffMs = new Date(isoStr).getTime() - Date.now();
+  if (diffMs <= 0) return 'NOW';
+  return formatAge(Math.round(diffMs / 60_000));
+}
+
+function getExpiryColor(isoStr: string): string {
+  const diffMs = new Date(isoStr).getTime() - Date.now();
+  if (diffMs <= 0 || diffMs < 30 * 60_000)   return '#FF3B5C';
+  if (diffMs < 2 * 60 * 60_000)              return '#FBBF24';
+  return '#00E5A8';
+}
+
 export default function SetupScannerCard({ setups, currentPrice }: Props) {
   if (!setups.length) {
     return (
@@ -303,6 +316,36 @@ export default function SetupScannerCard({ setups, currentPrice }: Props) {
                       {new Date(val.expiryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </span>
+                </div>
+              )}
+
+              {/* Row 1g: scanner freshness badge */}
+              {setup.scannerMeta && (
+                <div
+                  className="flex items-center gap-2 mb-1.5 flex-wrap"
+                  style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}
+                >
+                  <span className="text-[7px] text-muted2 tracking-wider">
+                    LAST SCAN <span className="font-bold">{new Date(setup.scannerMeta.lastScanAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </span>
+                  <span className="text-[7px] text-muted2">·</span>
+                  <span className="text-[7px] text-muted2 tracking-wider">
+                    NEXT IN <span className="font-bold">{formatCountdown(setup.scannerMeta.nextScanAt)}</span>
+                  </span>
+                  <span className="text-[7px] text-muted2">·</span>
+                  <span className="text-[7px] text-muted2 tracking-wider">
+                    EXPIRES IN <span className="font-bold" style={{ color: getExpiryColor(setup.scannerMeta.setupExpiresAt) }}>
+                      {formatCountdown(setup.scannerMeta.setupExpiresAt)}
+                    </span>
+                  </span>
+                  {setup.scannerMeta.rescanRequired && (
+                    <span
+                      className="text-[7px] font-bold px-1 py-0.5 rounded-chip tracking-wider ml-auto"
+                      style={{ color: '#FBBF24', background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.25)' }}
+                    >
+                      RESCAN REQUIRED
+                    </span>
+                  )}
                 </div>
               )}
 

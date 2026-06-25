@@ -41,12 +41,24 @@ export interface SetupValidityResult {
   requiredConfirmations:  string[];
   satisfiedConfirmations: string[];
   missingConfirmations:   string[];
-  expiryTime:             string;
+  expiryTime:             string;   // effective expiry — WATCH_ONLY uses stricter limit
+  hardExpiryTime:         string;   // full max-age expiry (for display)
   ageMinutes:             number;
   reason:                 string;
+  expiryReason?:          string;   // set when validity === 'EXPIRED', explains why
   entryZoneSource:        EntryZoneSource;
   entryZoneReason:        string;
   blocked:                boolean;
+}
+
+export interface ScannerSetupMeta {
+  lastScanAt:         string;   // ISO — when this setup was last validated
+  nextScanAt:         string;   // ISO — when next validation should occur
+  setupCreatedAt:     string;   // ISO — when the Pine signal arrived
+  setupExpiresAt:     string;   // ISO — effective expiry time
+  scanCadenceMinutes: number;   // 15 / 60 / 240 / 1440
+  expiryReason?:      string;   // reason if expired
+  rescanRequired:     boolean;  // true if expired or WATCH_ONLY counter-trend blocked
 }
 
 // ── Setup classification (Part B) ─────────────────────────────────────────────
@@ -165,6 +177,8 @@ export interface PendingSetup {
   decay?:            ConfidenceDecay;
   zoneQuality?:      EntryZoneQualityResult;
   explainability?:   SetupExplainability;
+  // Scanner lifecycle metadata
+  scannerMeta?:      ScannerSetupMeta;
 }
 
 export interface Trade {

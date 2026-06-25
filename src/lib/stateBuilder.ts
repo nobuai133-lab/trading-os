@@ -2,7 +2,7 @@ import { prisma } from './db';
 import { fetchOHLCV, fetchCurrentPrice, marketDataEngine } from './marketData';
 import { runStrategyAnalysis, deriveHtfBias } from './strategyEngine';
 import { classifySetup } from './setupClassifier';
-import { assessSetupValidity, applyGradeCap } from './setupValidityEngine';
+import { assessSetupValidity, applyGradeCap, WATCH_ONLY_MAX_AGE_MS, CANDLE_DURATION_MS, DEFAULT_MAX_AGE_MS } from './setupValidityEngine';
 import { classifySetupIntent } from './setupIntentEngine';
 import { computeConfidenceDecay } from './setupDecayEngine';
 import { scoreEntryZoneQuality } from './entryZoneQuality';
@@ -15,7 +15,7 @@ import type {
   MarketDataStatus, MarketDataBadge,
   EntryZoneSource, SetupExplainability, MultiTfAgreement,
   SetupIntent, TrendAlignment, SetupValidityResult, EntryZoneQualityResult,
-  SetupPriorityTier, SetupValidity, ConfidenceDecay,
+  SetupPriorityTier, SetupValidity, ConfidenceDecay, ScannerSetupMeta,
 } from '@/types';
 
 const EMPTY_TRADE: Trade = {
@@ -24,6 +24,11 @@ const EMPTY_TRADE: Trade = {
   tp1: 0, tp2: 0, tp3: 0,
   tp1Hit: false, tp2Hit: false, tp3Hit: false,
   riskPct: 1, rr: 0, sizeBtc: 0, expiryBars: 0, openPct: 0, unrealizedR: 0,
+};
+
+export const SCAN_CADENCE_MINUTES: Record<string, number> = {
+  '1m': 1, '5m': 5, '15m': 15, '30m': 30,
+  '1H': 60, '4H': 240, '1D': 1440, '1W': 10080,
 };
 
 export async function buildDashboardState(): Promise<DashboardState> {
@@ -313,14 +318,24 @@ export async function buildDashboardState(): Promise<DashboardState> {
       summary:    buildSummary(rank.tier, intentResult.intent, validity.validity),
     };
 
-    return { s, dir, classi, validity, intentResult, decay, zoneQuality, rank, explainability };
+    return { s, dir, classi, validity, intentResult, decay, zoneQuality, rank, explainability, timeframe };
   });
 
   // INVALID setups are completely filtered — EXPIRED and WATCH_ONLY are kept but labeled
   const filteredPending = rawPending.filter(({ validity }) => validity.validity !== 'INVALID');
 
-  const pending: PendingSetup[] = filteredPending.map(({ s, dir, classi, validity, intentResult, decay, zoneQuality, rank, explainability }, i) => {
+  const pending: PendingSetup[] = filteredPending.map(({ s, dir, classi, validity, intentResult, decay, zoneQuality, rank, explainability, timeframe }, i) => {
     const effectiveGrade = applyGradeCap(s.grade ?? 'B', validity.gradeCap);
+    const cadenceMinutes = SCAN_CADENCE_MINUTES[timeframe] ?? 240;
+    const scannerMeta: ScannerSetupMeta = {
+      lastScanAt:         new Date().toISOString(),
+      nextScanAt:         new Date(Date.now() + cadenceMinutes * 60_000).toISOString(),
+      setupCreatedAt:     s.createdAt.toISOString(),
+      setupExpiresAt:     validity.expiryTime,
+      scanCadenceMinutes: cadenceMinutes,
+      expiryReason:       validity.expiryReason,
+      rescanRequired:     validity.validity === 'WATCH_ONLY' && validity.blocked,
+    };
     return {
       id:              s.id,
       label:           `Setup ${String.fromCharCode(65 + i)}`,
@@ -344,8 +359,9 @@ export async function buildDashboardState(): Promise<DashboardState> {
       decay,
       zoneQuality,
       explainability,
+      scannerMeta,
     };
-  });
+  }).sort((a, b) => (b.rank?.priorityScore ?? 0) - (a.rank?.priorityScore ?? 0));
 
   // ── Anti-reentry ──────────────────────────────────────────────────────────────
   const topRange  = rangeMems[0];
@@ -427,6 +443,9 @@ export async function buildDashboardState(): Promise<DashboardState> {
     currentMode:   mode,
   };
 
+  // Only show non-expired setups as primary display; expired setups become invisible
+  const displayPending = pending.filter(p => p.validity?.validity !== 'EXPIRED');
+
   return {
     symbol:            'BTCUSDT',
     timeframe:         '4H',
@@ -442,7 +461,7 @@ export async function buildDashboardState(): Promise<DashboardState> {
     htfBias,
     ltfBias,
     trade,
-    pendingSetups:     pending.length > 0 ? pending : undefined,
+    pendingSetups:     displayPending.length > 0 ? displayPending : undefined,
     antiReentry,
     keyLevels:         keyLevels.length > 0 ? keyLevels : undefined,
     agents,
