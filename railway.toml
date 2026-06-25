@@ -1,5 +1,6 @@
 [build]
 builder = "NIXPACKS"
+nixpacksConfigPath = "nixpacks.toml"
 
 [deploy]
 startCommand = "npx prisma migrate deploy && npm start"
