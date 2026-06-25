@@ -18,10 +18,11 @@ const STATUS_COLOR: Record<PaperPositionStatus, string> = {
 };
 
 function RBadge({ value, prefix = '' }: { value: number; prefix?: string }) {
-  const col = value > 0 ? '#00E5A8' : value < 0 ? '#FF3B5C' : '#94A3B8';
+  const safe = Number.isFinite(value) ? value : 0;
+  const col  = safe > 0 ? '#00E5A8' : safe < 0 ? '#FF3B5C' : '#94A3B8';
   return (
     <span className="tabular-nums font-mono text-[11px]" style={{ color: col }}>
-      {prefix}{value >= 0 ? '+' : ''}{value.toFixed(2)}R
+      {prefix}{safe >= 0 ? '+' : ''}{safe.toFixed(2)}R
     </span>
   );
 }
@@ -157,10 +158,10 @@ export default function PaperPositionsPanel() {
       {summary && summary.closedCount > 0 && (
         <div className="mt-2 pt-2 border-t border-white/5 flex justify-between">
           <span className="text-[9px] text-muted">
-            Avg win <span className="text-[#00E5A8]">+{summary.avgWinR.toFixed(2)}R</span>
+            Avg win <span className="text-[#00E5A8]">+{(summary.avgWinR ?? 0).toFixed(2)}R</span>
           </span>
           <span className="text-[9px] text-muted">
-            Avg loss <span className="text-[#FF3B5C]">{summary.avgLossR.toFixed(2)}R</span>
+            Avg loss <span className="text-[#FF3B5C]">{(summary.avgLossR ?? 0).toFixed(2)}R</span>
           </span>
           <span className="text-[9px] text-muted">
             {summary.winCount}W / {summary.lossCount}L

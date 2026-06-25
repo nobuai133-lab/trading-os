@@ -21,19 +21,21 @@ const DECISION_COLORS: Record<RiskOfficeDecision, string> = {
 };
 
 function RBar({ label, used, max, color }: { label: string; used: number; max: number; color: string }) {
-  const pct = max > 0 ? Math.min(100, (used / max) * 100) : 0;
+  const safeUsed = used ?? 0;
+  const safeMax  = max  ?? 0;
+  const pct = safeMax > 0 ? Math.min(100, (safeUsed / safeMax) * 100) : 0;
   return (
     <div>
       <div className="flex justify-between mb-0.5">
         <span className="text-[10px] text-muted">{label}</span>
         <span className="text-[10px] tabular-nums" style={{ color }}>
-          {used >= 0 ? '+' : ''}{used.toFixed(1)}R / {max}R
+          {safeUsed >= 0 ? '+' : ''}{safeUsed.toFixed(1)}R / {safeMax}R
         </span>
       </div>
       <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(71,85,105,0.25)' }}>
         <div
           className="h-full rounded-full transition-all duration-700"
-          style={{ width: `${pct}%`, background: color }}
+          style={{ width: `${Number.isFinite(pct) ? pct : 0}%`, background: color }}
         />
       </div>
     </div>
@@ -81,12 +83,14 @@ export default function RiskOfficePanel() {
 
   const { riskState, decision, positionSize, cooldown, metrics, budget, vetos, killSwitchActive, approvalChain } = result;
 
-  const stateCol    = STATE_COLORS[riskState];
-  const decisionCol = DECISION_COLORS[decision];
+  if (!metrics || !budget || !vetos) return null;
 
-  const dailyLossUsedPct   = budget.maxDailyLossR   > 0 ? metrics.dailyLossR   / budget.maxDailyLossR   : 0;
-  const weeklyLossUsedPct  = budget.maxWeeklyLossR  > 0 ? metrics.weeklyLossR  / budget.maxWeeklyLossR  : 0;
-  const monthlyLossUsedPct = budget.maxMonthlyLossR > 0 ? metrics.monthlyLossR / budget.maxMonthlyLossR : 0;
+  const stateCol    = STATE_COLORS[riskState]    ?? '#94A3B8';
+  const decisionCol = DECISION_COLORS[decision]  ?? '#94A3B8';
+
+  const dailyLossUsedPct   = budget.maxDailyLossR   > 0 ? (metrics.dailyLossR   ?? 0) / budget.maxDailyLossR   : 0;
+  const weeklyLossUsedPct  = budget.maxWeeklyLossR  > 0 ? (metrics.weeklyLossR  ?? 0) / budget.maxWeeklyLossR  : 0;
+  const monthlyLossUsedPct = budget.maxMonthlyLossR > 0 ? (metrics.monthlyLossR ?? 0) / budget.maxMonthlyLossR : 0;
 
   const dailyColor   = dailyLossUsedPct   >= 1 ? '#FF3B5C' : dailyLossUsedPct   >= 0.7 ? '#F97316' : '#00E5A8';
   const weeklyColor  = weeklyLossUsedPct  >= 1 ? '#FF3B5C' : weeklyLossUsedPct  >= 0.7 ? '#F97316' : '#00E5A8';
@@ -236,14 +240,14 @@ export default function RiskOfficePanel() {
         style={{ borderTop: '1px solid rgba(71,85,105,0.2)' }}
       >
         <span className="text-muted2">Today</span>
-        <span style={{ color: metrics.dailyPnlR >= 0 ? '#00E5A8' : '#FF3B5C' }}>
-          {metrics.dailyPnlR >= 0 ? '+' : ''}{metrics.dailyPnlR.toFixed(1)}R
+        <span style={{ color: (metrics.dailyPnlR ?? 0) >= 0 ? '#00E5A8' : '#FF3B5C' }}>
+          {(metrics.dailyPnlR ?? 0) >= 0 ? '+' : ''}{(metrics.dailyPnlR ?? 0).toFixed(1)}R
         </span>
         <span className="text-muted2">|</span>
         <span className="text-muted2">Trades</span>
-        <span style={{ color: '#94A3B8' }}>{metrics.tradeCountToday}</span>
-        <span className="ml-auto" style={{ color: metrics.weeklyPnlR >= 0 ? '#00E5A8' : '#FF3B5C' }}>
-          W {metrics.weeklyPnlR >= 0 ? '+' : ''}{metrics.weeklyPnlR.toFixed(1)}R
+        <span style={{ color: '#94A3B8' }}>{metrics.tradeCountToday ?? 0}</span>
+        <span className="ml-auto" style={{ color: (metrics.weeklyPnlR ?? 0) >= 0 ? '#00E5A8' : '#FF3B5C' }}>
+          W {(metrics.weeklyPnlR ?? 0) >= 0 ? '+' : ''}{(metrics.weeklyPnlR ?? 0).toFixed(1)}R
         </span>
       </div>
     </GlassCard>

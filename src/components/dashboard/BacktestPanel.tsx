@@ -15,6 +15,11 @@ const STATUS_COLOR: Record<ReplayStatus, string> = {
   FAILED:    '#FF3B5C',
 };
 
+function safeFixed(v: number | undefined | null, digits: number): string {
+  if (!Number.isFinite(v)) return (0).toFixed(digits);
+  return (v as number).toFixed(digits);
+}
+
 function MetricCell({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div className="text-center">
@@ -27,11 +32,12 @@ function MetricCell({ label, value, color }: { label: string; value: string; col
 }
 
 function RVal({ v, label }: { v: number; label: string }) {
-  const col = v > 0 ? '#00E5A8' : v < 0 ? '#FF3B5C' : '#94A3B8';
+  const safe = Number.isFinite(v) ? v : 0;
+  const col  = safe > 0 ? '#00E5A8' : safe < 0 ? '#FF3B5C' : '#94A3B8';
   return (
     <div className="text-center">
       <div className="text-[13px] font-bold tabular-nums" style={{ color: col }}>
-        {v >= 0 ? '+' : ''}{v.toFixed(2)}R
+        {safe >= 0 ? '+' : ''}{safe.toFixed(2)}R
       </div>
       <div className="text-[9px] text-muted">{label}</div>
     </div>
@@ -74,14 +80,14 @@ function WalkForwardView({ result }: { result: WalkForwardResult }) {
         <div className="text-center py-1 rounded" style={{ background: 'rgba(96,165,250,0.08)' }}>
           <div className="text-[11px] font-bold tabular-nums"
             style={{ color: result.aggregateInSampleNetR >= 0 ? '#60A5FA' : '#FF3B5C' }}>
-            {result.aggregateInSampleNetR >= 0 ? '+' : ''}{result.aggregateInSampleNetR.toFixed(2)}R
+            {(result.aggregateInSampleNetR ?? 0) >= 0 ? '+' : ''}{safeFixed(result.aggregateInSampleNetR, 2)}R
           </div>
           <div className="text-[9px] text-muted">IS Net R</div>
         </div>
         <div className="text-center py-1 rounded" style={{ background: 'rgba(0,229,168,0.08)' }}>
           <div className="text-[11px] font-bold tabular-nums"
             style={{ color: result.aggregateOutOfSampleNetR >= 0 ? '#00E5A8' : '#FF3B5C' }}>
-            {result.aggregateOutOfSampleNetR >= 0 ? '+' : ''}{result.aggregateOutOfSampleNetR.toFixed(2)}R
+            {(result.aggregateOutOfSampleNetR ?? 0) >= 0 ? '+' : ''}{safeFixed(result.aggregateOutOfSampleNetR, 2)}R
           </div>
           <div className="text-[9px] text-muted">OOS Net R</div>
         </div>
@@ -171,27 +177,27 @@ function SessionDetail({
       <div className="grid grid-cols-4 gap-1.5 py-2 border-y border-white/5">
         <RVal v={m.netR}           label="Net R"   />
         <RVal v={-m.maxDrawdownR}  label="MaxDD"   />
-        <MetricCell label="Sharpe"  value={m.sharpeRatio.toFixed(2)}  color={m.sharpeRatio >= 0.5 ? '#00E5A8' : m.sharpeRatio >= 0 ? '#FBBF24' : '#FF3B5C'} />
-        <MetricCell label="Calmar"  value={m.calmarRatio === 999 ? '∞' : m.calmarRatio.toFixed(1)} color={m.calmarRatio > 1 ? '#00E5A8' : '#FBBF24'} />
+        <MetricCell label="Sharpe"  value={safeFixed(m.sharpeRatio, 2)}  color={(m.sharpeRatio ?? 0) >= 0.5 ? '#00E5A8' : (m.sharpeRatio ?? 0) >= 0 ? '#FBBF24' : '#FF3B5C'} />
+        <MetricCell label="Calmar"  value={m.calmarRatio === 999 ? '∞' : safeFixed(m.calmarRatio, 1)} color={(m.calmarRatio ?? 0) > 1 ? '#00E5A8' : '#FBBF24'} />
       </div>
 
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-1 text-center">
         <div>
           <div className="text-[13px] font-bold" style={{ color: m.profitFactor >= 1.5 ? '#00E5A8' : '#FBBF24' }}>
-            {m.profitFactor === 999 ? '∞' : m.profitFactor.toFixed(2)}
+            {m.profitFactor === 999 ? '∞' : safeFixed(m.profitFactor, 2)}
           </div>
           <div className="text-[9px] text-muted">PF</div>
         </div>
         <div>
           <div className="text-[13px] font-bold" style={{ color: m.winRate >= 50 ? '#00E5A8' : '#FF3B5C' }}>
-            {(m.tpHits + m.slHits) > 0 ? `${m.winRate.toFixed(0)}%` : '—'}
+            {(m.tpHits + m.slHits) > 0 ? `${safeFixed(m.winRate, 0)}%` : '—'}
           </div>
           <div className="text-[9px] text-muted">Win Rate</div>
         </div>
         <div>
           <div className="text-[13px] font-bold text-muted">
-            -{m.totalFeesR.toFixed(2)}R
+            -{safeFixed(m.totalFeesR, 2)}R
           </div>
           <div className="text-[9px] text-muted">Fees</div>
         </div>
@@ -393,10 +399,10 @@ export default function BacktestPanel() {
               <span className="text-[10px]">{s.symbol} {s.timeframe}</span>
               <div className="flex items-center gap-2">
                 <span className="text-[9px] tabular-nums" style={{ color: s.netR >= 0 ? '#00E5A8' : '#FF3B5C' }}>
-                  {s.netR >= 0 ? '+' : ''}{s.netR.toFixed(2)}R
+                  {(s.netR ?? 0) >= 0 ? '+' : ''}{safeFixed(s.netR, 2)}R
                 </span>
                 <span className="text-[9px] font-mono text-muted">
-                  S:{s.sharpeRatio.toFixed(1)}
+                  S:{safeFixed(s.sharpeRatio, 1)}
                 </span>
                 <span className="text-[9px]" style={{ color: STATUS_COLOR[s.status] }}>
                   {s.status}

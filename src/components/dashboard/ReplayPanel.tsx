@@ -15,6 +15,11 @@ const STATUS_COLOR: Record<ReplayStatus, string> = {
   FAILED:    '#FF3B5C',
 };
 
+function safeFixed(v: number | undefined | null, digits: number): string {
+  if (!Number.isFinite(v)) return (0).toFixed(digits);
+  return (v as number).toFixed(digits);
+}
+
 function ScoreBar({ label, score }: { label: string; score: number }) {
   const col = score >= 70 ? '#00E5A8' : score >= 50 ? '#FBBF24' : '#FF3B5C';
   return (
@@ -31,11 +36,12 @@ function ScoreBar({ label, score }: { label: string; score: number }) {
 }
 
 function RVal({ v, label }: { v: number; label: string }) {
-  const col = v > 0 ? '#00E5A8' : v < 0 ? '#FF3B5C' : '#94A3B8';
+  const safe = Number.isFinite(v) ? v : 0;
+  const col  = safe > 0 ? '#00E5A8' : safe < 0 ? '#FF3B5C' : '#94A3B8';
   return (
     <div className="text-center">
       <div className="text-[13px] font-bold tabular-nums" style={{ color: col }}>
-        {v >= 0 ? '+' : ''}{v.toFixed(2)}R
+        {safe >= 0 ? '+' : ''}{safe.toFixed(2)}R
       </div>
       <div className="text-[9px] text-muted">{label}</div>
     </div>
@@ -307,8 +313,8 @@ export default function ReplayPanel() {
             >
               <span className="text-[10px]">{s.symbol} {s.timeframe}</span>
               <div className="flex items-center gap-2">
-                <span className="text-[9px] tabular-nums" style={{ color: s.totalRealizedR >= 0 ? '#00E5A8' : '#FF3B5C' }}>
-                  {s.totalRealizedR >= 0 ? '+' : ''}{s.totalRealizedR.toFixed(2)}R
+                <span className="text-[9px] tabular-nums" style={{ color: (s.totalRealizedR ?? 0) >= 0 ? '#00E5A8' : '#FF3B5C' }}>
+                  {(s.totalRealizedR ?? 0) >= 0 ? '+' : ''}{safeFixed(s.totalRealizedR, 2)}R
                 </span>
                 <span className="text-[9px]" style={{ color: STATUS_COLOR[s.status] }}>
                   {s.status}
