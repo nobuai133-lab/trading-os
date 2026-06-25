@@ -1,7 +1,7 @@
 export type Decision   = 'LONG' | 'SHORT' | 'WAIT' | 'NO TRADE';
 export type Direction  = 'LONG' | 'SHORT';
 export type TradeGrade = 'A+' | 'A' | 'B' | 'C' | '—';
-export type Regime     = 'BULL' | 'BEAR' | 'RANGE' | 'TRANSITION' | 'DISTRIBUTION' | 'ACCUMULATION';
+export type Regime     = 'TRENDING_UP' | 'TRENDING_DOWN' | 'RANGING' | 'UNKNOWN' | 'BULL' | 'BEAR' | 'RANGE' | 'TRANSITION' | 'DISTRIBUTION' | 'ACCUMULATION';
 export type TradeStatus =
   | 'IDLE' | 'WAITING' | 'READY' | 'ENTERED' | 'ACTIVE'
   | 'TP1_HIT' | 'TP2_HIT' | 'TP3_HIT'
@@ -179,6 +179,14 @@ export interface AlertMessage {
   text: string;
 }
 
+export interface KeyLevel {
+  price:     number;
+  type:      'RESISTANCE' | 'SUPPORT' | 'LIQUIDITY_HIGH' | 'LIQUIDITY_LOW';
+  strength:  number;
+  timeframe: string;
+  source:    'SWING' | 'LIQUIDITY';
+}
+
 export interface DashboardState {
   symbol:            string;
   timeframe:         string;
@@ -196,6 +204,7 @@ export interface DashboardState {
   trade:             Trade;
   pendingSetups?:    PendingSetup[];
   antiReentry?:      AntiReentryState;
+  keyLevels?:        KeyLevel[];
   agents:            AgentReport[];
   invalidation:      InvalidationLayers;
   thesis:            ThesisState;

@@ -12,6 +12,7 @@ import SetupScannerCard from '@/components/ui/SetupScannerCard';
 import CooldownBanner from '@/components/ui/CooldownBanner';
 import RangeStatusCard from '@/components/ui/RangeStatusCard';
 import SetupFingerprintCard from '@/components/ui/SetupFingerprintCard';
+import KeyLevelsCard from '@/components/ui/KeyLevelsCard';
 
 const ANALYSIS_INTERVAL_MS = 15 * 60_000;
 
@@ -173,6 +174,11 @@ export default function ScannerPanel({ state }: Props) {
             ))}
           </div>
         </GlassCard>
+      )}
+
+      {/* Key Levels */}
+      {state.keyLevels && state.keyLevels.length > 0 && (
+        <KeyLevelsCard levels={state.keyLevels} currentPrice={state.price} />
       )}
 
       {/* Agent Consensus */}
