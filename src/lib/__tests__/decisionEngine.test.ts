@@ -129,7 +129,7 @@ describe('computeDecision', () => {
   it('TC02 — SHORT: all gates pass, direction SHORT', () => {
     const result = computeDecision(makeInput({
       trade:    makeTrade({ direction: 'SHORT' }),
-      strategy: makeStrategy({ regime: 'TRENDING_DOWN', ema20: 63000, ema50: 65000 }),
+      strategy: makeStrategy({ regime: 'TRENDING_DOWN', ema20: 63000, ema50: 65000, htfBias: 'Bearish', ltfBias: 'Bearish' }),
     }));
     expect(result.outcome).toBe('SHORT');
     expect(result.blockingReason).toBeNull();

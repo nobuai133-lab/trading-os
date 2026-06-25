@@ -1,6 +1,9 @@
 'use client';
 
-import type { PendingSetup, SetupStatus, SetupLifecycleStatus, TrendAlignment, SetupActionability } from '@/types';
+import type {
+  PendingSetup, SetupStatus, SetupLifecycleStatus,
+  TrendAlignment, SetupActionability, SetupValidity,
+} from '@/types';
 import GlassCard from '@/components/ui/GlassCard';
 
 const STATUS_STYLE: Record<SetupStatus, { color: string; bg: string; border: string; label: string }> = {
@@ -24,16 +27,23 @@ const GRADE_COLOR: Record<string, string> = {
 };
 
 const ALIGNMENT_STYLE: Record<TrendAlignment, { color: string; label: string }> = {
-  ALIGNED:       { color: '#00E5A8', label: 'ALIGNED'      },
-  COUNTER_TREND: { color: '#FBBF24', label: 'COUNTER-TREND' },
-  CONFLICT:      { color: '#FF3B5C', label: 'CONFLICT'      },
+  ALIGNED:       { color: '#00E5A8', label: 'ALIGNED'       },
+  COUNTER_TREND: { color: '#FBBF24', label: 'COUNTER-TREND'  },
+  CONFLICT:      { color: '#FF3B5C', label: 'CONFLICT'       },
 };
 
 const ACTIONABILITY_STYLE: Record<SetupActionability, { color: string; label: string }> = {
-  READY:                  { color: '#00E5A8', label: 'READY'          },
-  CONFIRMATION_REQUIRED:  { color: '#FBBF24', label: 'NEEDS CONFIRM'  },
-  WATCHING:               { color: '#38BDF8', label: 'WATCHING'        },
-  INVALID:                { color: '#FF3B5C', label: 'INVALID'         },
+  READY:                 { color: '#00E5A8', label: 'READY'         },
+  CONFIRMATION_REQUIRED: { color: '#FBBF24', label: 'NEEDS CONFIRM' },
+  WATCHING:              { color: '#38BDF8', label: 'WATCH ONLY'    },
+  INVALID:               { color: '#FF3B5C', label: 'INVALID'       },
+};
+
+const VALIDITY_STYLE: Record<SetupValidity, { color: string; bg: string; border: string; label: string }> = {
+  VALID:      { color: '#00E5A8', bg: 'rgba(0,229,168,0.08)',   border: 'rgba(0,229,168,0.22)',   label: 'VALID'      },
+  WATCH_ONLY: { color: '#FBBF24', bg: 'rgba(251,191,36,0.08)',  border: 'rgba(251,191,36,0.22)',  label: 'WATCH ONLY' },
+  INVALID:    { color: '#FF3B5C', bg: 'rgba(255,59,92,0.08)',   border: 'rgba(255,59,92,0.22)',   label: 'INVALID'    },
+  EXPIRED:    { color: '#64748B', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.22)', label: 'EXPIRED'    },
 };
 
 interface Props {
@@ -41,38 +51,65 @@ interface Props {
   currentPrice: number;
 }
 
+function formatAge(minutes: number): string {
+  if (minutes < 60)  return `${minutes}m`;
+  if (minutes < 1440) return `${Math.round(minutes / 60)}h`;
+  return `${Math.round(minutes / 1440)}d`;
+}
+
 export default function SetupScannerCard({ setups, currentPrice }: Props) {
-  if (!setups.length) return null;
+  if (!setups.length) {
+    return (
+      <GlassCard>
+        <div className="flex items-center justify-between mb-2">
+          <p className="card-title mb-0">Setup Scanner</p>
+        </div>
+        <div
+          className="rounded-[10px] p-3 text-center"
+          style={{ background: 'rgba(100,116,139,0.08)', border: '1px solid rgba(100,116,139,0.20)' }}
+        >
+          <p className="text-[11px] font-bold text-muted2 tracking-wider uppercase">NO VALID SETUP</p>
+          <p className="text-[9px] text-muted2 mt-1">
+            Waiting for trend-following retest or reversal confirmation
+          </p>
+        </div>
+      </GlassCard>
+    );
+  }
 
   return (
     <GlassCard>
       <div className="flex items-center justify-between mb-2">
         <p className="card-title mb-0">Setup Scanner</p>
         <span className="text-[9px] font-bold tracking-widest uppercase text-muted2">
-          {setups.filter(s => s.status !== 'INVALIDATED').length} active
+          {setups.filter(s => s.status !== 'INVALIDATED' && s.validity?.validity !== 'EXPIRED').length} active
         </span>
       </div>
 
       <div className="flex flex-col gap-2">
         {setups.map((setup) => {
-          const ss    = STATUS_STYLE[setup.status];
-          const inZ   = currentPrice >= setup.entryZone.low && currentPrice <= setup.entryZone.high;
+          const ss       = STATUS_STYLE[setup.status];
+          const val      = setup.validity;
+          const vs       = val ? VALIDITY_STYLE[val.validity] : null;
+          const inZ      = currentPrice >= setup.entryZone.low && currentPrice <= setup.entryZone.high;
           const dirColor = setup.direction === 'SHORT' ? '#FF3B5C' : '#00E5A8';
-          const cls   = setup.classification;
+          const cls      = setup.classification;
+          const isWatchOnly = val?.validity === 'WATCH_ONLY';
+          const isExpired   = val?.validity === 'EXPIRED';
 
           return (
             <div
               key={setup.id}
               className="rounded-[10px] p-2.5"
               style={{
-                background: ss.bg,
-                border:     `1px solid ${ss.border}`,
-                opacity:    setup.status === 'INVALIDATED' ? 0.5 : 1,
+                background: vs ? vs.bg : ss.bg,
+                border:     `1px solid ${vs ? vs.border : ss.border}`,
+                opacity:    isExpired ? 0.55 : setup.status === 'INVALIDATED' ? 0.5 : 1,
               }}
             >
-              {/* Row 1: label + direction + grade + status */}
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-[11px] font-black" style={{ color: ss.color }}>
+              {/* Row 1: label + direction + grade + validity + lifecycle */}
+              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                <span className="text-[11px] font-black" style={{ color: vs ? vs.color : ss.color }}>
                   {setup.label}
                 </span>
                 <span
@@ -81,13 +118,18 @@ export default function SetupScannerCard({ setups, currentPrice }: Props) {
                 >
                   {setup.direction}
                 </span>
-                <span
-                  className="text-[9px] font-bold"
-                  style={{ color: GRADE_COLOR[setup.grade] }}
-                >
+                <span className="text-[9px] font-bold" style={{ color: GRADE_COLOR[setup.grade] }}>
                   {setup.grade}
                 </span>
-                <div className="ml-auto flex items-center gap-1">
+                <div className="ml-auto flex items-center gap-1 flex-wrap justify-end">
+                  {vs && (
+                    <span
+                      className="text-[7px] font-bold px-1.5 py-0.5 rounded-chip tracking-wider uppercase"
+                      style={{ color: vs.color, background: vs.bg, border: `1px solid ${vs.border}` }}
+                    >
+                      {vs.label}
+                    </span>
+                  )}
                   {setup.lifecycleStatus && (
                     <span
                       className="text-[7px] font-bold px-1 py-0.5 rounded-chip tracking-wider"
@@ -100,37 +142,68 @@ export default function SetupScannerCard({ setups, currentPrice }: Props) {
                       {setup.lifecycleStatus}
                     </span>
                   )}
-                  <span className="text-[8px] font-bold tracking-wider" style={{ color: ss.color }}>
-                    {ss.label}
-                  </span>
                 </div>
               </div>
 
-              {/* Row 1b: classification row — only shown when classification present */}
-              {cls && (
+              {/* Row 1b: trend alignment + actionability + reason */}
+              {(cls || val) && (
                 <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                  <span
-                    className="text-[8px] font-bold px-1.5 py-0.5 rounded-chip tracking-wider"
-                    style={{
-                      color:      ALIGNMENT_STYLE[cls.trendAlignment].color,
-                      background: `${ALIGNMENT_STYLE[cls.trendAlignment].color}14`,
-                      border:     `1px solid ${ALIGNMENT_STYLE[cls.trendAlignment].color}30`,
-                    }}
-                  >
-                    {ALIGNMENT_STYLE[cls.trendAlignment].label}
+                  {cls && (
+                    <span
+                      className="text-[8px] font-bold px-1.5 py-0.5 rounded-chip tracking-wider"
+                      style={{
+                        color:      ALIGNMENT_STYLE[cls.trendAlignment].color,
+                        background: `${ALIGNMENT_STYLE[cls.trendAlignment].color}14`,
+                        border:     `1px solid ${ALIGNMENT_STYLE[cls.trendAlignment].color}30`,
+                      }}
+                    >
+                      {ALIGNMENT_STYLE[cls.trendAlignment].label}
+                    </span>
+                  )}
+                  {val && (
+                    <span
+                      className="text-[8px] font-bold px-1.5 py-0.5 rounded-chip tracking-wider"
+                      style={{
+                        color:      ACTIONABILITY_STYLE[val.actionability].color,
+                        background: `${ACTIONABILITY_STYLE[val.actionability].color}14`,
+                        border:     `1px solid ${ACTIONABILITY_STYLE[val.actionability].color}30`,
+                      }}
+                    >
+                      {ACTIONABILITY_STYLE[val.actionability].label}
+                    </span>
+                  )}
+                  {(val ?? cls) && (
+                    <span
+                      className="text-[8px] text-muted2 truncate max-w-[200px]"
+                      title={val?.reason ?? cls?.reason}
+                    >
+                      {val?.reason ?? cls?.reason}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Row 1c: age + expiry (for watch-only / expired setups) */}
+              {val && (isWatchOnly || isExpired) && (
+                <div className="flex items-center gap-3 mb-1.5">
+                  <span className="text-[8px] text-muted2">
+                    Age: <span className="font-bold" style={{ color: isExpired ? '#FF3B5C' : '#FBBF24' }}>
+                      {formatAge(val.ageMinutes)}
+                    </span>
                   </span>
-                  <span
-                    className="text-[8px] font-bold px-1.5 py-0.5 rounded-chip tracking-wider"
-                    style={{
-                      color:      ACTIONABILITY_STYLE[cls.actionability].color,
-                      background: `${ACTIONABILITY_STYLE[cls.actionability].color}14`,
-                      border:     `1px solid ${ACTIONABILITY_STYLE[cls.actionability].color}30`,
-                    }}
-                  >
-                    {ACTIONABILITY_STYLE[cls.actionability].label}
+                  <span className="text-[8px] text-muted2">
+                    Expires: <span className="font-bold text-muted2">
+                      {new Date(val.expiryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
                   </span>
-                  <span className="text-[8px] text-muted2 truncate max-w-[180px]" title={cls.reason}>
-                    {cls.reason}
+                </div>
+              )}
+
+              {/* Row 1d: entry zone source */}
+              {val && val.entryZoneSource !== 'UNKNOWN' && (
+                <div className="mb-1.5">
+                  <span className="text-[8px] text-muted2" title={val.entryZoneReason}>
+                    Zone source: <span className="font-semibold">{val.entryZoneSource.replace(/_/g, ' ').toLowerCase()}</span>
                   </span>
                 </div>
               )}
@@ -154,7 +227,7 @@ export default function SetupScannerCard({ setups, currentPrice }: Props) {
                 )}
               </div>
 
-              {/* Row 3: SL + TPs in one line */}
+              {/* Row 3: SL + TPs */}
               <div className="grid grid-cols-4 gap-1">
                 {[
                   { label: 'SL',  value: setup.sl,  color: '#FF3B5C' },
@@ -177,20 +250,50 @@ export default function SetupScannerCard({ setups, currentPrice }: Props) {
                 <span className="text-[9px] font-bold text-blue">RR {setup.rr.toFixed(1)}R</span>
               </div>
 
-              {/* Row 5: missing confirmations — only for counter-trend/conflict setups */}
-              {cls && cls.missingConfirmations.length > 0 && (
+              {/* Row 5: missing confirmations */}
+              {val && val.missingConfirmations.length > 0 && (
                 <div className="mt-2 pt-1.5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                   <span className="text-[8px] font-bold text-muted2 tracking-wider uppercase mb-1 block">
-                    Missing confirmations ({cls.missingConfirmations.length}/{cls.requiredConfirmations.length})
+                    Missing confirmations ({val.missingConfirmations.length}/{val.requiredConfirmations.length})
                   </span>
                   <div className="flex flex-col gap-0.5">
-                    {cls.missingConfirmations.map((c) => (
+                    {val.missingConfirmations.map((c) => (
                       <div key={c} className="flex items-center gap-1">
                         <span className="text-[8px]" style={{ color: '#FF3B5C' }}>✕</span>
                         <span className="text-[8px] text-muted2">{c}</span>
                       </div>
                     ))}
+                    {val.satisfiedConfirmations.map((c) => (
+                      <div key={c} className="flex items-center gap-1">
+                        <span className="text-[8px]" style={{ color: '#00E5A8' }}>✓</span>
+                        <span className="text-[8px] text-muted2">{c}</span>
+                      </div>
+                    ))}
                   </div>
+                </div>
+              )}
+
+              {/* Row 6: watch-only blocked banner */}
+              {isWatchOnly && val?.blocked && (
+                <div
+                  className="mt-2 rounded p-1.5 text-center"
+                  style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.20)' }}
+                >
+                  <span className="text-[8px] font-bold tracking-wider uppercase" style={{ color: '#FBBF24' }}>
+                    WATCH ONLY — Not actionable until confirmations met
+                  </span>
+                </div>
+              )}
+
+              {/* Row 7: expired banner */}
+              {isExpired && (
+                <div
+                  className="mt-2 rounded p-1.5 text-center"
+                  style={{ background: 'rgba(255,59,92,0.06)', border: '1px solid rgba(255,59,92,0.18)' }}
+                >
+                  <span className="text-[8px] font-bold tracking-wider uppercase" style={{ color: '#FF3B5C' }}>
+                    EXPIRED — Rescan required
+                  </span>
                 </div>
               )}
             </div>

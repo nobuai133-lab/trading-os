@@ -13,6 +13,8 @@ import {
 } from './memoryEngine';
 import { buildDashboardState, persistDashboardState } from './stateBuilder';
 import { notify } from './notificationService';
+import { assessSetupValidity } from './setupValidityEngine';
+import { deriveHtfBias } from './strategyEngine';
 import type { WebhookSignal } from './signalProvider';
 
 // ── Signal types sent from TradingView Pine alerts ────────────────────────────
@@ -84,7 +86,8 @@ export async function processWebhookSignal(signal: WebhookSignal, rawPayload: ob
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
-async function handleSetupDetected(signal: WebhookSignal) {
+async function handleSetupDetected(rawSignal: WebhookSignal) {
+  let signal: WebhookSignal = rawSignal;
   const risk = evaluateRisk(signal);
 
   if (!risk.allowed) {
@@ -123,6 +126,52 @@ async function handleSetupDetected(signal: WebhookSignal) {
       `${signal.symbol}: Range re-entry not allowed yet`);
     return;
   }
+
+  // Bias validation — check setup direction against current HTF/LTF regime
+  try {
+    const [snap4H, snap1D] = await Promise.all([
+      prisma.marketSnapshot.findFirst({
+        where: { symbol: signal.symbol, timeframe: '4H' },
+        orderBy: { snapshotAt: 'desc' },
+        select: { regime: true },
+      }),
+      prisma.marketSnapshot.findFirst({
+        where: { symbol: signal.symbol, timeframe: '1D' },
+        orderBy: { snapshotAt: 'desc' },
+        select: { regime: true },
+      }),
+    ]);
+    const htfBias = deriveHtfBias((snap1D?.regime ?? snap4H?.regime ?? 'RANGING') as any);
+    const ltfBias = deriveHtfBias((snap4H?.regime ?? 'RANGING') as any);
+
+    const validity = assessSetupValidity({
+      htfBias,
+      ltfBias,
+      regime:        snap4H?.regime ?? 'RANGING',
+      currentPrice:  signal.entryZoneLow ?? 0,
+      direction:     (signal.direction?.toUpperCase() ?? 'LONG') as 'LONG' | 'SHORT',
+      entryZoneLow:  signal.entryZoneLow  ?? 0,
+      entryZoneHigh: signal.entryZoneHigh ?? 0,
+      createdAt:     new Date(),
+      timeframe:     signal.timeframe ?? '4H',
+      signalGrade:   signal.grade ?? 'B',
+    });
+
+    if (validity.validity === 'INVALID') {
+      await notify('SETUP_BLOCKED',
+        `${signal.symbol} ${signal.direction} blocked — ${validity.reason}`);
+      return;
+    }
+    // WATCH_ONLY: store but cap the grade
+    if (validity.validity === 'WATCH_ONLY' && signal.grade) {
+      const gradeOrder = ['A+', 'A', 'B', 'C'];
+      const capIdx  = gradeOrder.indexOf(validity.gradeCap);
+      const sigIdx  = gradeOrder.indexOf(signal.grade);
+      if (sigIdx !== -1 && capIdx !== -1 && sigIdx < capIdx) {
+        signal = { ...signal, grade: validity.gradeCap };
+      }
+    }
+  } catch { /* non-fatal — proceed without bias check if DB is unavailable */ }
 
   // Create setup record
   await prisma.setup.create({

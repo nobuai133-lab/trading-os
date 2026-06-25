@@ -5,14 +5,18 @@
 import type { EvidenceState, StrategyState, MemoryState, ProviderState, RiskState, TradeState } from '@/kernel/types';
 import type { DecisionOutcome, DecisionResult, WeightedEvidenceItem, DecisionGateResult } from '@/types';
 import { classifySetup } from './setupClassifier';
+import { assessSetupValidity } from './setupValidityEngine';
 
 export interface DecisionInput {
-  evidence:  EvidenceState;
-  strategy:  StrategyState;
-  memory:    MemoryState;
-  provider:  ProviderState;
-  risk:      RiskState;
-  trade:     TradeState;
+  evidence:         EvidenceState;
+  strategy:         StrategyState;
+  memory:           MemoryState;
+  provider:         ProviderState;
+  risk:             RiskState;
+  trade:            TradeState;
+  // Optional — passed when a specific pending setup is being evaluated
+  setupCreatedAt?:  string;
+  setupTimeframe?:  string;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -142,17 +146,35 @@ function runGates(
     return fail('G9:Score', `Weighted score ${weightedScore}/${MAX_SCORE} below threshold (40)`, 'WAIT');
   gates.push({ gate: 'G9:Score', passed: true });
 
-  // G9.5: Counter-trend gate — CONFLICT setups require all confirmations before proceeding
+  // G9.5: Counter-trend + validity gate
   if (!active) {
     const dir = trade.direction?.toUpperCase();
     if (dir === 'LONG' || dir === 'SHORT') {
+      if (input.setupCreatedAt && input.setupTimeframe) {
+        // Full validity check when setup metadata is explicitly provided
+        const validity = assessSetupValidity({
+          htfBias:       input.strategy.htfBias,
+          ltfBias:       input.strategy.ltfBias,
+          regime:        input.strategy.regime,
+          currentPrice:  input.strategy.ema20 ?? 0,
+          direction:     dir as 'LONG' | 'SHORT',
+          entryZoneLow:  0,
+          entryZoneHigh: 0,
+          createdAt:     input.setupCreatedAt,
+          timeframe:     input.setupTimeframe,
+        });
+
+        if (validity.validity === 'INVALID' || validity.validity === 'EXPIRED') {
+          return fail('G9.5:SetupValidity', `Setup ${validity.validity.toLowerCase()}: ${validity.reason}`, 'WAIT');
+        }
+        if (validity.validity === 'WATCH_ONLY' && validity.blocked) {
+          return fail('G9.5:CounterTrend', `Counter-trend ${dir} blocked: ${validity.reason}`, 'WAIT');
+        }
+      }
+      // CONFLICT via classifier (always enforced)
       const classi = classifySetup(dir as 'LONG' | 'SHORT', input.strategy.htfBias, input.strategy.ltfBias);
       if (classi.trendAlignment === 'CONFLICT') {
-        return fail(
-          'G9.5:CounterTrend',
-          `Counter-trend ${dir}: ${classi.reason}`,
-          'WAIT',
-        );
+        return fail('G9.5:CounterTrend', `Counter-trend ${dir}: ${classi.reason}`, 'WAIT');
       }
     }
   }

@@ -18,6 +18,37 @@ export type AlertType = 'warn' | 'danger' | 'success';
 
 export type SetupStatus = 'WATCHING' | 'TRIGGERED' | 'INVALIDATED';
 
+// ── Setup validity engine types ────────────────────────────────────────────────
+
+export type SetupValidity = 'VALID' | 'WATCH_ONLY' | 'INVALID' | 'EXPIRED';
+
+export type EntryZoneSource =
+  | 'RETEST_BREAKDOWN'
+  | 'RETEST_BREAKOUT'
+  | 'LIQUIDITY_SWEEP_RECLAIM'
+  | 'SUPPLY_ZONE'
+  | 'DEMAND_ZONE'
+  | 'VALUE_AREA'
+  | 'DEMO_DATA'
+  | 'UNKNOWN';
+
+export interface SetupValidityResult {
+  validity:               SetupValidity;
+  trendAlignment:         TrendAlignment;
+  actionability:          SetupActionability;
+  confidenceCap:          number;
+  gradeCap:               TradeGrade;
+  requiredConfirmations:  string[];
+  satisfiedConfirmations: string[];
+  missingConfirmations:   string[];
+  expiryTime:             string;
+  ageMinutes:             number;
+  reason:                 string;
+  entryZoneSource:        EntryZoneSource;
+  entryZoneReason:        string;
+  blocked:                boolean;
+}
+
 // ── Setup classification (Part B) ─────────────────────────────────────────────
 
 export type SetupType =
@@ -126,6 +157,8 @@ export interface PendingSetup {
   fingerprintId?:  string;
   tradeCount?:     number;
   classification?: SetupClassification;
+  validity?:       SetupValidityResult;
+  createdAt?:      string;
 }
 
 export interface Trade {

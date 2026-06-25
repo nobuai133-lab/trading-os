@@ -2,6 +2,7 @@ import { prisma } from './db';
 import { fetchOHLCV, fetchCurrentPrice, marketDataEngine } from './marketData';
 import { runStrategyAnalysis, deriveHtfBias } from './strategyEngine';
 import { classifySetup } from './setupClassifier';
+import { assessSetupValidity, applyGradeCap } from './setupValidityEngine';
 import type {
   DashboardState, Trade, PendingSetup, AntiReentryState,
   RangeMemory, SetupFingerprint, CooldownState, KeyLevel,
@@ -218,26 +219,49 @@ export async function buildDashboardState(): Promise<DashboardState> {
     decision = 'WAIT';
   }
 
-  // ── Pending setups ────────────────────────────────────────────────────────────
-  const pending: PendingSetup[] = pendingSetups.map((s, i) => {
-    const dir    = s.direction as Direction;
-    const classi = classifySetup(dir, htfBias, ltfBias);
+  // ── Pending setups — assess validity and filter INVALID ──────────────────────
+  const rawPending = pendingSetups.map((s) => {
+    const dir      = s.direction as Direction;
+    const classi   = classifySetup(dir, htfBias, ltfBias);
+    const validity = assessSetupValidity({
+      htfBias,
+      ltfBias,
+      regime:        regime4H,
+      currentPrice:  livePrice,
+      direction:     dir,
+      entryZoneLow:  s.entryZoneLow  ?? 0,
+      entryZoneHigh: s.entryZoneHigh ?? 0,
+      createdAt:     s.createdAt,
+      timeframe:     s.timeframe ?? '4H',
+      signalGrade:   s.grade ?? 'B',
+    });
+    return { s, dir, classi, validity };
+  });
+
+  // INVALID setups are completely filtered — EXPIRED and WATCH_ONLY are kept but labeled
+  const filteredPending = rawPending.filter(({ validity }) => validity.validity !== 'INVALID');
+
+  const pending: PendingSetup[] = filteredPending.map(({ s, dir, classi, validity }, i) => {
+    // Cap grade based on validity assessment (gradeCap is a ceiling)
+    const effectiveGrade = applyGradeCap(s.grade ?? 'B', validity.gradeCap);
     return {
       id:              s.id,
       label:           `Setup ${String.fromCharCode(65 + i)}`,
       direction:       dir,
-      grade:           (s.grade ?? 'B') as TradeGrade,
+      grade:           effectiveGrade,
       entryZone:       { low: s.entryZoneLow ?? 0, high: s.entryZoneHigh ?? 0 },
       sl:              s.sl  ?? 0,
       tp1:             s.tp1 ?? 0,
       tp2:             s.tp2 ?? 0,
       tp3:             s.tp3 ?? 0,
       rr:              s.rr  ?? 0,
-      status:          'WATCHING' as SetupStatus,
+      status:          validity.blocked ? 'WATCHING' as SetupStatus : 'WATCHING' as SetupStatus,
       note:            s.note,
-      lifecycleStatus: s.lifecycleStatus as any,
-      fingerprintId:   s.fingerprintId   ?? undefined,
+      lifecycleStatus: validity.validity === 'EXPIRED' ? 'EXPIRED' : s.lifecycleStatus as any,
+      fingerprintId:   s.fingerprintId  ?? undefined,
       classification:  classi,
+      validity,
+      createdAt:       s.createdAt.toISOString(),
     };
   });
 
