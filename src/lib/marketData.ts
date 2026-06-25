@@ -11,6 +11,11 @@ export interface OHLCVBar {
 
 const BASE = 'https://api.bybit.com';
 
+const FETCH_HEADERS = {
+  'Accept': 'application/json',
+  'User-Agent': 'trading-os/1.0',
+};
+
 // Bybit linear (USDT perpetual) intervals
 const TF_MAP: Record<string, string> = {
   '1m':  '1',
@@ -31,7 +36,7 @@ export async function fetchOHLCV(
   const interval = TF_MAP[timeframe] ?? '240';
   const url = `${BASE}/v5/market/kline?category=linear&symbol=${symbol}&interval=${interval}&limit=${limit}`;
 
-  const res = await fetch(url, { cache: 'no-store' });
+  const res = await fetch(url, { cache: 'no-store', headers: FETCH_HEADERS });
   if (!res.ok) {
     throw new Error(`Bybit klines error ${res.status}: ${await res.text()}`);
   }
@@ -55,7 +60,7 @@ export async function fetchOHLCV(
 
 export async function fetchCurrentPrice(symbol: string): Promise<number> {
   const url = `${BASE}/v5/market/tickers?category=linear&symbol=${symbol}`;
-  const res = await fetch(url, { cache: 'no-store' });
+  const res = await fetch(url, { cache: 'no-store', headers: FETCH_HEADERS });
   if (!res.ok) {
     throw new Error(`Bybit ticker error ${res.status}`);
   }
