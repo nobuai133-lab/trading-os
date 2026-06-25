@@ -9,66 +9,84 @@ export interface OHLCVBar {
   volume: number;
 }
 
-const BASE = 'https://api.bybit.com';
+const BASE = 'https://api.kraken.com/0/public';
 
 const FETCH_HEADERS = {
   'Accept': 'application/json',
   'User-Agent': 'trading-os/1.0',
 };
 
-// Bybit linear (USDT perpetual) intervals
-const TF_MAP: Record<string, string> = {
-  '1m':  '1',
-  '5m':  '5',
-  '15m': '15',
-  '30m': '30',
-  '1H':  '60',
-  '4H':  '240',
-  '1D':  'D',
-  '1W':  'W',
+// Kraken interval in minutes
+const TF_MAP: Record<string, number> = {
+  '1m':  1,
+  '5m':  5,
+  '15m': 15,
+  '30m': 30,
+  '1H':  60,
+  '4H':  240,
+  '1D':  1440,
+  '1W':  10080,
 };
+
+// Map common symbol formats to Kraken pair names
+const SYMBOL_MAP: Record<string, string> = {
+  'BTCUSDT':  'XBTUSDT',
+  'ETHUSDT':  'ETHUSDT',
+  'BTCUSD':   'XBTUSD',
+  'ETHUSD':   'ETHUSD',
+  'SOLUSD':   'SOLUSD',
+  'SOLUSDT':  'SOLUSDT',
+};
+
+function toKrakenPair(symbol: string): string {
+  return SYMBOL_MAP[symbol.toUpperCase()] ?? symbol;
+}
 
 export async function fetchOHLCV(
   symbol: string,
   timeframe: string,
   limit = 200,
 ): Promise<OHLCVBar[]> {
-  const interval = TF_MAP[timeframe] ?? '240';
-  const url = `${BASE}/v5/market/kline?category=linear&symbol=${symbol}&interval=${interval}&limit=${limit}`;
+  const pair     = toKrakenPair(symbol);
+  const interval = TF_MAP[timeframe] ?? 240;
+  const url      = `${BASE}/OHLC?pair=${pair}&interval=${interval}`;
 
   const res = await fetch(url, { cache: 'no-store', headers: FETCH_HEADERS });
-  if (!res.ok) {
-    throw new Error(`Bybit klines error ${res.status}: ${await res.text()}`);
-  }
+  if (!res.ok) throw new Error(`Kraken OHLC error ${res.status}`);
 
   const json = await res.json();
-  if (json.retCode !== 0) {
-    throw new Error(`Bybit API error: ${json.retMsg}`);
-  }
+  if (json.error?.length) throw new Error(`Kraken error: ${json.error[0]}`);
 
-  // Bybit returns newest first — reverse to get chronological order
-  const list: string[][] = json.result.list;
-  return list.reverse().map((r) => ({
-    openTime: Number(r[0]),
-    open:     parseFloat(r[1]),
-    high:     parseFloat(r[2]),
-    low:      parseFloat(r[3]),
-    close:    parseFloat(r[4]),
-    volume:   parseFloat(r[5]),
+  // Result key varies (e.g. XBTUSDT, XXBTZUSD) — take first non-"last" key
+  const key = Object.keys(json.result).find((k) => k !== 'last');
+  if (!key) throw new Error('Kraken: no data key in response');
+
+  const rows: (string | number)[][] = json.result[key];
+  // Kraken returns oldest first; take last `limit` bars
+  const slice = rows.slice(-limit);
+
+  return slice.map((r) => ({
+    openTime: Number(r[0]) * 1000,
+    open:     parseFloat(String(r[1])),
+    high:     parseFloat(String(r[2])),
+    low:      parseFloat(String(r[3])),
+    close:    parseFloat(String(r[4])),
+    volume:   parseFloat(String(r[6])),
   }));
 }
 
 export async function fetchCurrentPrice(symbol: string): Promise<number> {
-  const url = `${BASE}/v5/market/tickers?category=linear&symbol=${symbol}`;
+  const pair = toKrakenPair(symbol);
+  const url  = `${BASE}/Ticker?pair=${pair}`;
+
   const res = await fetch(url, { cache: 'no-store', headers: FETCH_HEADERS });
-  if (!res.ok) {
-    throw new Error(`Bybit ticker error ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`Kraken ticker error ${res.status}`);
+
   const json = await res.json();
-  if (json.retCode !== 0) {
-    throw new Error(`Bybit API error: ${json.retMsg}`);
-  }
-  const price = parseFloat(json.result.list[0].lastPrice);
-  logger.debug('fetchCurrentPrice', { symbol, price });
+  if (json.error?.length) throw new Error(`Kraken error: ${json.error[0]}`);
+
+  const key   = Object.keys(json.result)[0];
+  const price = parseFloat(json.result[key].c[0]); // c = last trade closed [price, lot volume]
+  logger.debug('fetchCurrentPrice', { symbol, pair, price });
   return price;
 }
