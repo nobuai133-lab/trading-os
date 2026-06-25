@@ -166,11 +166,11 @@ export default function MemoryIntelligenceCard() {
       )}
 
       {/* Similarity warnings */}
-      {similarity && similarity.warnings.length > 0 && (
+      {similarity && (similarity.warnings?.length ?? 0) > 0 && (
         <div>
           <p className="text-[9px] text-muted2 uppercase tracking-wider mb-1">Warnings</p>
           <div className="flex flex-col gap-1">
-            {similarity.warnings.slice(0, 3).map((w, i) => (
+            {(similarity.warnings ?? []).slice(0, 3).map((w, i) => (
               <div key={i} className="flex items-start gap-1.5">
                 <span className="text-[10px]" style={{ color: '#FBBF24' }}>⚠</span>
                 <span className="text-[10px] text-muted leading-snug">{w}</span>

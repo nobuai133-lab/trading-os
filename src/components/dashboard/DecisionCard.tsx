@@ -117,11 +117,11 @@ export default function DecisionCard() {
       </div>
 
       {/* Supporting */}
-      {decision.topSupporting.length > 0 && (
+      {(decision.topSupporting?.length ?? 0) > 0 && (
         <div className="mb-2">
           <p className="text-[9px] text-muted2 uppercase tracking-wider mb-1">Supporting</p>
           <div className="flex flex-col gap-1">
-            {decision.topSupporting.map((s_) => (
+            {(decision.topSupporting ?? []).map((s_) => (
               <div key={s_} className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#00E5A8' }} />
                 <span className="text-[10px] text-text">{s_}</span>
@@ -132,11 +132,11 @@ export default function DecisionCard() {
       )}
 
       {/* Opposing */}
-      {decision.topOpposing.length > 0 && (
+      {(decision.topOpposing?.length ?? 0) > 0 && (
         <div className="mb-2">
           <p className="text-[9px] text-muted2 uppercase tracking-wider mb-1">Opposing</p>
           <div className="flex flex-col gap-1">
-            {decision.topOpposing.map((o) => (
+            {(decision.topOpposing ?? []).map((o) => (
               <div key={o} className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#FF3B5C' }} />
                 <span className="text-[10px] text-muted">{o}</span>
@@ -165,7 +165,7 @@ export default function DecisionCard() {
       </div>
 
       {/* Gate strip */}
-      <GateStrip gates={decision.gates} />
+      <GateStrip gates={decision.gates ?? []} />
     </GlassCard>
   );
 }

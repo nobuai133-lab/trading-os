@@ -28,9 +28,10 @@ interface Props {
 export default function RiskPanel({ state }: Props) {
   const { trade, thesis } = state;
 
-  const activeCount   = thesis.assumptions.filter((a) => a.status === 'ACTIVE').length;
-  const weakenedCount = thesis.assumptions.filter((a) => a.status === 'WEAKENED').length;
-  const failedCount   = thesis.assumptions.filter((a) => a.status === 'FAILED').length;
+  const assumptions   = thesis?.assumptions ?? [];
+  const activeCount   = assumptions.filter((a) => a.status === 'ACTIVE').length;
+  const weakenedCount = assumptions.filter((a) => a.status === 'WEAKENED').length;
+  const failedCount   = assumptions.filter((a) => a.status === 'FAILED').length;
 
   const thesisColor = thesis.score >= 80 ? '#00E5A8' : thesis.score >= 60 ? '#FBBF24' : '#FF3B5C';
 
@@ -140,7 +141,7 @@ export default function RiskPanel({ state }: Props) {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          {thesis.assumptions.map((a) => {
+          {assumptions.map((a) => {
             const s = ASSUMPTION_COLORS[a.status];
             return (
               <div

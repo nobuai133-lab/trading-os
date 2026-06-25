@@ -162,11 +162,11 @@ export default function ScannerPanel({ state }: Props) {
       )}
 
       {/* Next required conditions */}
-      {antiReentry?.blocked && antiReentry.nextRequiredConditions.length > 0 && (
+      {antiReentry?.blocked && (antiReentry.nextRequiredConditions?.length ?? 0) > 0 && (
         <GlassCard padding="p-3">
           <p className="card-title mb-2">Required to Re-enter</p>
           <div className="flex flex-col gap-1">
-            {antiReentry.nextRequiredConditions.map((cond, i) => (
+            {(antiReentry.nextRequiredConditions ?? []).map((cond, i) => (
               <div key={i} className="flex items-start gap-2">
                 <span className="text-[9px] mt-0.5 shrink-0" style={{ color: '#475569' }}>○</span>
                 <span className="text-[9px] text-muted2">{cond}</span>
@@ -185,7 +185,7 @@ export default function ScannerPanel({ state }: Props) {
       <GlassCard>
         <p className="card-title">Agent Consensus</p>
         <div className="grid grid-cols-2 gap-1.5">
-          {state.agents.map((agent) => (
+          {(state.agents ?? []).map((agent) => (
             <AgentBadge key={agent.id} agent={agent} />
           ))}
         </div>
