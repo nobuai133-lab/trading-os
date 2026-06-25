@@ -14,8 +14,11 @@ import {
 import { buildDashboardState, persistDashboardState } from './stateBuilder';
 import { notify } from './notificationService';
 import { assessSetupValidity } from './setupValidityEngine';
+import { classifySetupIntent } from './setupIntentEngine';
+import { classifySetup } from './setupClassifier';
 import { deriveHtfBias } from './strategyEngine';
 import type { WebhookSignal } from './signalProvider';
+import type { EntryZoneSource } from '@/types';
 
 // ── Signal types sent from TradingView Pine alerts ────────────────────────────
 // SETUP_DETECTED   — new trade setup identified
@@ -171,6 +174,19 @@ async function handleSetupDetected(rawSignal: WebhookSignal) {
         signal = { ...signal, grade: validity.gradeCap };
       }
     }
+
+    // Intent classification (informational — logged but not stored in DB)
+    const dir           = (signal.direction?.toUpperCase() ?? 'LONG') as 'LONG' | 'SHORT';
+    const classi        = classifySetup(dir, htfBias, ltfBias);
+    const intentResult  = classifySetupIntent({
+      direction:       dir,
+      htfBias,
+      ltfBias,
+      regime:          snap4H?.regime ?? 'RANGING',
+      entryZoneSource: (signal.entryZoneSource ?? 'UNKNOWN') as EntryZoneSource,
+      trendAlignment:  classi.trendAlignment,
+    });
+    logger.info(`[tradeLifecycle] ${signal.symbol} ${dir} intent: ${intentResult.intent} (riskMult: ${intentResult.riskMultiplier})`);
   } catch { /* non-fatal — proceed without bias check if DB is unavailable */ }
 
   // Create setup record

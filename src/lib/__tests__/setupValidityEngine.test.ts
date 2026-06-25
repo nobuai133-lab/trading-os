@@ -132,4 +132,43 @@ describe('setupValidityEngine', () => {
     expect(r.ageMinutes).toBeGreaterThan(50);
     expect(r.ageMinutes).toBeLessThan(70);
   });
+
+  // SV-13: COUNTER_TREND intent + enough evidence → uses counterTrendValidator (CONFIRMATION_REQUIRED)
+  it('SV-13: COUNTER_TREND intent with 4 evidence flags → CONFIRMATION_REQUIRED (validator path)', () => {
+    const r = assessSetupValidity(base({
+      htfBias:         'BEARISH', ltfBias: 'BULLISH',  // COUNTER_TREND alignment
+      entryZoneSource: 'DEMAND_ZONE',
+      intent:          'COUNTER_TREND',
+      liquidityEvidence:  true,
+      structureEvidence:  true,
+      acceptanceEvidence: true,
+      momentumEvidence:   true,
+      zoneQualityScore:   60,
+      decayedConfidence:  60,
+      remainingLifePct:   50,
+    }));
+    expect(r.validity).toBe('WATCH_ONLY');
+    expect(r.actionability).toBe('CONFIRMATION_REQUIRED');
+    expect(r.trendAlignment).toBe('COUNTER_TREND');
+  });
+
+  // SV-14: REVERSAL intent + CONFLICT alignment + all evidence + good quality → CONFIRMATION_REQUIRED
+  it('SV-14: REVERSAL intent with all evidence and good zone quality → CONFIRMATION_REQUIRED', () => {
+    const r = assessSetupValidity(base({
+      htfBias:         'BEARISH', ltfBias: 'BEARISH',  // CONFLICT alignment
+      entryZoneSource: 'DEMAND_ZONE',
+      intent:          'REVERSAL',
+      liquidityEvidence:  true,
+      structureEvidence:  true,
+      acceptanceEvidence: true,
+      momentumEvidence:   true,
+      volumeEvidence:     true,
+      zoneQualityScore:   70,
+      decayedConfidence:  55,
+      remainingLifePct:   50,
+    }));
+    expect(r.validity).toBe('WATCH_ONLY');
+    expect(r.actionability).toBe('CONFIRMATION_REQUIRED');
+    expect(r.trendAlignment).toBe('CONFLICT');
+  });
 });

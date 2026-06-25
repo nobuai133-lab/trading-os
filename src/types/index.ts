@@ -156,9 +156,15 @@ export interface PendingSetup {
   lifecycleStatus?: SetupLifecycleStatus;
   fingerprintId?:  string;
   tradeCount?:     number;
-  classification?: SetupClassification;
-  validity?:       SetupValidityResult;
-  createdAt?:      string;
+  classification?:   SetupClassification;
+  validity?:         SetupValidityResult;
+  createdAt?:        string;
+  // ITOS enrichment — present when setupIntentEngine + priorityEngine have run
+  intent?:           SetupIntent;
+  rank?:             SetupRank;
+  decay?:            ConfidenceDecay;
+  zoneQuality?:      EntryZoneQualityResult;
+  explainability?:   SetupExplainability;
 }
 
 export interface Trade {
@@ -947,6 +953,74 @@ export interface WalkForwardApiResponse {
   ok:      boolean;
   result:  WalkForwardResult | null;
   error?:  string;
+}
+
+// ── Institutional Setup Intelligence (ITOS) types ─────────────────────────────
+
+export type SetupIntent =
+  | 'TREND_CONTINUATION'
+  | 'BREAKOUT_CONTINUATION'
+  | 'BREAKDOWN_CONTINUATION'
+  | 'RETEST_CONTINUATION'
+  | 'REVERSAL'
+  | 'COUNTER_TREND'
+  | 'RANGE_REVERSION'
+  | 'LIQUIDITY_SWEEP'
+  | 'INVALID';
+
+export type InstitutionalClass = 'A+' | 'A' | 'B' | 'B-' | 'C' | 'D';
+
+export type SetupPriorityTier = 'PRIMARY' | 'SECONDARY' | 'WATCHLIST' | 'INVALID';
+
+export interface ConfidenceDecay {
+  initialConfidence: number;
+  currentConfidence: number;
+  decayLambda:       number;
+  ageMinutes:        number;
+  remainingLifePct:  number;
+  expiryTimestamp:   string;
+}
+
+export interface EntryZoneQualityFactor {
+  name:        string;
+  score:       number;
+  maxScore:    number;
+  description: string;
+}
+
+export interface EntryZoneQualityResult {
+  score:   number;   // 0–100
+  label:   'EXCELLENT' | 'GOOD' | 'FAIR' | 'POOR' | 'INVALID';
+  factors: EntryZoneQualityFactor[];
+  reason:  string;
+}
+
+export interface SetupRank {
+  tier:               SetupPriorityTier;
+  priorityScore:      number;   // 0–100
+  institutionalClass: InstitutionalClass;
+  riskMultiplier:     number;   // 0.0–1.0
+  intentRank:         number;   // lower = higher priority
+}
+
+export interface MultiTfAgreement {
+  htfScore:       number;   // 0–100, weight 40%
+  executionScore: number;   // 0–100, weight 35%
+  triggerScore:   number;   // 0–100, weight 25%
+  composite:      number;   // weighted average
+  htfVeto:        boolean;  // true if HTF score < 40 (blocks regardless)
+  reason:         string;
+}
+
+export interface SetupExplainability {
+  intent:           SetupIntent;
+  rank:             SetupRank;
+  decay:            ConfidenceDecay;
+  zoneQuality:      EntryZoneQualityResult;
+  multiTfAgreement: MultiTfAgreement;
+  topReasons:       string[];   // up to 3 supporting reasons
+  topRisks:         string[];   // up to 3 risk factors
+  summary:          string;     // one-line human-readable verdict
 }
 
 export const LIFECYCLE_STEPS = [

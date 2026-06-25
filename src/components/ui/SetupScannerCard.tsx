@@ -3,6 +3,7 @@
 import type {
   PendingSetup, SetupStatus, SetupLifecycleStatus,
   TrendAlignment, SetupActionability, SetupValidity,
+  SetupPriorityTier, SetupIntent,
 } from '@/types';
 import GlassCard from '@/components/ui/GlassCard';
 
@@ -44,6 +45,25 @@ const VALIDITY_STYLE: Record<SetupValidity, { color: string; bg: string; border:
   WATCH_ONLY: { color: '#FBBF24', bg: 'rgba(251,191,36,0.08)',  border: 'rgba(251,191,36,0.22)',  label: 'WATCH ONLY' },
   INVALID:    { color: '#FF3B5C', bg: 'rgba(255,59,92,0.08)',   border: 'rgba(255,59,92,0.22)',   label: 'INVALID'    },
   EXPIRED:    { color: '#64748B', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.22)', label: 'EXPIRED'    },
+};
+
+const TIER_STYLE: Record<SetupPriorityTier, { color: string; label: string }> = {
+  PRIMARY:   { color: '#00E5A8', label: 'PRIMARY'   },
+  SECONDARY: { color: '#38BDF8', label: 'SECONDARY' },
+  WATCHLIST: { color: '#FBBF24', label: 'WATCHLIST' },
+  INVALID:   { color: '#FF3B5C', label: 'INVALID'   },
+};
+
+const INTENT_COLOR: Record<SetupIntent, string> = {
+  TREND_CONTINUATION:      '#00E5A8',
+  BREAKOUT_CONTINUATION:   '#00E5A8',
+  BREAKDOWN_CONTINUATION:  '#00E5A8',
+  RETEST_CONTINUATION:     '#38BDF8',
+  LIQUIDITY_SWEEP:         '#A78BFA',
+  RANGE_REVERSION:         '#38BDF8',
+  REVERSAL:                '#FBBF24',
+  COUNTER_TREND:           '#FF3B5C',
+  INVALID:                 '#64748B',
 };
 
 interface Props {
@@ -96,6 +116,13 @@ export default function SetupScannerCard({ setups, currentPrice }: Props) {
           const cls      = setup.classification;
           const isWatchOnly = val?.validity === 'WATCH_ONLY';
           const isExpired   = val?.validity === 'EXPIRED';
+          // ITOS
+          const rank    = setup.rank;
+          const decay   = setup.decay;
+          const zoneQ   = setup.zoneQuality;
+          const expl    = setup.explainability;
+          const tier    = rank?.tier;
+          const intent  = setup.intent;
 
           return (
             <div
@@ -183,7 +210,87 @@ export default function SetupScannerCard({ setups, currentPrice }: Props) {
                 </div>
               )}
 
-              {/* Row 1c: age + expiry (for watch-only / expired setups) */}
+              {/* Row 1c: ITOS tier + intent + institutional class */}
+              {(tier || intent) && (
+                <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                  {tier && (
+                    <span
+                      className="text-[8px] font-bold px-1.5 py-0.5 rounded-chip tracking-wider"
+                      style={{
+                        color:      TIER_STYLE[tier].color,
+                        background: `${TIER_STYLE[tier].color}14`,
+                        border:     `1px solid ${TIER_STYLE[tier].color}30`,
+                      }}
+                    >
+                      {TIER_STYLE[tier].label}
+                    </span>
+                  )}
+                  {intent && intent !== 'INVALID' && (
+                    <span
+                      className="text-[8px] font-bold px-1.5 py-0.5 rounded-chip tracking-wider"
+                      style={{
+                        color:      INTENT_COLOR[intent],
+                        background: `${INTENT_COLOR[intent]}14`,
+                        border:     `1px solid ${INTENT_COLOR[intent]}30`,
+                      }}
+                    >
+                      {intent.replace(/_/g, ' ')}
+                    </span>
+                  )}
+                  {rank && (
+                    <span className="text-[8px] text-muted2 ml-auto">
+                      {rank.institutionalClass} · {(rank.riskMultiplier * 100).toFixed(0)}% risk
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Row 1d: confidence decay + zone quality */}
+              {(decay || zoneQ) && (
+                <div className="flex items-center gap-4 mb-1.5">
+                  {decay && (
+                    <span className="text-[8px] text-muted2">
+                      Conf: <span className="font-bold" style={{ color: decay.remainingLifePct > 50 ? '#00E5A8' : decay.remainingLifePct > 20 ? '#FBBF24' : '#FF3B5C' }}>
+                        {decay.currentConfidence}%
+                      </span>
+                      <span className="text-[7px] text-muted2"> ({decay.remainingLifePct}% life)</span>
+                    </span>
+                  )}
+                  {zoneQ && (
+                    <span className="text-[8px] text-muted2">
+                      Zone: <span
+                        className="font-bold"
+                        style={{ color: zoneQ.score >= 70 ? '#00E5A8' : zoneQ.score >= 45 ? '#FBBF24' : '#FF3B5C' }}
+                      >
+                        {zoneQ.score}/100
+                      </span>
+                      <span className="text-[7px] text-muted2"> ({zoneQ.label.toLowerCase()})</span>
+                    </span>
+                  )}
+                  {expl?.multiTfAgreement && (
+                    <span className="text-[8px] text-muted2">
+                      MTF: <span
+                        className="font-bold"
+                        style={{ color: expl.multiTfAgreement.composite >= 70 ? '#00E5A8' : expl.multiTfAgreement.composite >= 45 ? '#FBBF24' : '#FF3B5C' }}
+                      >
+                        {expl.multiTfAgreement.composite}%
+                      </span>
+                      {expl.multiTfAgreement.htfVeto && (
+                        <span className="text-[7px]" style={{ color: '#FF3B5C' }}> VETO</span>
+                      )}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Row 1e: explainability summary */}
+              {expl?.summary && (
+                <div className="mb-1.5">
+                  <span className="text-[8px] text-muted2 italic">{expl.summary}</span>
+                </div>
+              )}
+
+              {/* Row 1f: age + expiry (for watch-only / expired setups) */}
               {val && (isWatchOnly || isExpired) && (
                 <div className="flex items-center gap-3 mb-1.5">
                   <span className="text-[8px] text-muted2">

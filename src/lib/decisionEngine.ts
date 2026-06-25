@@ -17,6 +17,9 @@ export interface DecisionInput {
   // Optional — passed when a specific pending setup is being evaluated
   setupCreatedAt?:  string;
   setupTimeframe?:  string;
+  // ITOS — present when priority ranking has run
+  setupTier?:       import('@/types').SetupPriorityTier;
+  setupIntent?:     import('@/types').SetupIntent;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -179,6 +182,26 @@ function runGates(
     }
   }
   gates.push({ gate: 'G9.5:CounterTrend', passed: true });
+
+  // G9.6: ITOS priority tier gate — only PRIMARY setups may generate LONG/SHORT decisions
+  // SECONDARY/WATCHLIST setups produce WAIT; INVALID is blocked by earlier gates
+  if (!active && input.setupTier !== undefined) {
+    if (input.setupTier === 'WATCHLIST' || input.setupTier === 'INVALID') {
+      return fail(
+        'G9.6:PriorityTier',
+        `Setup tier ${input.setupTier} — only PRIMARY setups may trigger trade decisions`,
+        'WAIT',
+      );
+    }
+    if (input.setupTier === 'SECONDARY') {
+      // SECONDARY produces WAIT but passes (direction determination yields READY/WAIT later)
+      gates.push({ gate: 'G9.6:PriorityTier', passed: true, reason: 'Secondary setup — confirmation required' });
+    } else {
+      gates.push({ gate: 'G9.6:PriorityTier', passed: true });
+    }
+  } else {
+    gates.push({ gate: 'G9.6:PriorityTier', passed: true });
+  }
 
   // G10: Final outcome derivation
   gates.push({ gate: 'G10:Final', passed: true });

@@ -1,4 +1,16 @@
 import { timingSafeEqual } from 'crypto';
+import type { SetupIntent, EntryZoneSource } from '@/types';
+
+// Valid values for server-side coercion of Pine-provided fields
+const VALID_SETUP_INTENTS = new Set<SetupIntent>([
+  'TREND_CONTINUATION', 'BREAKOUT_CONTINUATION', 'BREAKDOWN_CONTINUATION',
+  'RETEST_CONTINUATION', 'REVERSAL', 'COUNTER_TREND', 'RANGE_REVERSION',
+  'LIQUIDITY_SWEEP', 'INVALID',
+]);
+const VALID_ENTRY_ZONE_SOURCES = new Set<EntryZoneSource>([
+  'RETEST_BREAKDOWN', 'RETEST_BREAKOUT', 'LIQUIDITY_SWEEP_RECLAIM',
+  'SUPPLY_ZONE', 'DEMAND_ZONE', 'VALUE_AREA', 'DEMO_DATA', 'UNKNOWN',
+]);
 
 export interface WebhookSignal {
   symbol: string;
@@ -21,6 +33,24 @@ export interface WebhookSignal {
   thesisType?: string;
   note?: string;
   riskPct?: number;
+  // ── ITOS enrichment fields (v2 Pine payloads) — informational; server stays authoritative ──
+  entryZoneSource?:           EntryZoneSource;  // coerced to UNKNOWN if invalid
+  setupIntent?:               SetupIntent;       // coerced to undefined if invalid
+  // Evidence flags
+  liquidityEvidence?:         boolean;
+  structureEvidence?:         boolean;
+  acceptanceEvidence?:        boolean;
+  momentumEvidence?:          boolean;
+  volumeEvidence?:            boolean;
+  trendEvidence?:             boolean;
+  // Setup lifecycle metadata
+  setupCreatedAt?:            string;
+  setupUpdatedAt?:            string;
+  setupTimeframe?:            string;
+  setupType?:                 string;   // Pine-side label, informational only
+  pineTrendAlignment?:        string;   // Pine-side alignment, informational only
+  setupAgeMinutes?:           number;
+  reversalConfirmationCount?: number;
   [key: string]: unknown;
 }
 
@@ -78,7 +108,41 @@ export function parseWebhookPayload(body: unknown): WebhookSignal {
     thesisType:    typeof p.thesisType === 'string' ? p.thesisType : undefined,
     note:          typeof p.note       === 'string' ? p.note       : undefined,
     riskPct:       numOrUndef(p.riskPct),
+    // ── ITOS enrichment fields ────────────────────────────────────────────────
+    entryZoneSource: coerceEntryZoneSource(p.entryZoneSource),
+    setupIntent:     coerceSetupIntent(p.setupIntent),
+    liquidityEvidence:  boolOrFalse(p.liquidityEvidence),
+    structureEvidence:  boolOrFalse(p.structureEvidence),
+    acceptanceEvidence: boolOrFalse(p.acceptanceEvidence),
+    momentumEvidence:   boolOrFalse(p.momentumEvidence),
+    volumeEvidence:     boolOrFalse(p.volumeEvidence),
+    trendEvidence:      boolOrFalse(p.trendEvidence),
+    setupCreatedAt:  typeof p.setupCreatedAt  === 'string' ? p.setupCreatedAt  : undefined,
+    setupUpdatedAt:  typeof p.setupUpdatedAt  === 'string' ? p.setupUpdatedAt  : undefined,
+    setupTimeframe:  typeof p.setupTimeframe  === 'string' ? p.setupTimeframe  : undefined,
+    setupType:       typeof p.setupType       === 'string' ? p.setupType       : undefined,
+    pineTrendAlignment: typeof p.pineTrendAlignment === 'string' ? p.pineTrendAlignment : undefined,
+    setupAgeMinutes:            numOrUndef(p.setupAgeMinutes),
+    reversalConfirmationCount:  numOrUndef(p.reversalConfirmationCount),
   };
+}
+
+function coerceSetupIntent(v: unknown): SetupIntent | undefined {
+  if (typeof v !== 'string') return undefined;
+  const upper = v.toUpperCase() as SetupIntent;
+  return VALID_SETUP_INTENTS.has(upper) ? upper : undefined;
+}
+
+function coerceEntryZoneSource(v: unknown): EntryZoneSource | undefined {
+  if (typeof v !== 'string') return undefined;
+  const upper = v.toUpperCase() as EntryZoneSource;
+  return VALID_ENTRY_ZONE_SOURCES.has(upper) ? upper : 'UNKNOWN';
+}
+
+function boolOrFalse(v: unknown): boolean {
+  if (typeof v === 'boolean') return v;
+  if (v === 'true' || v === '1' || v === 1) return true;
+  return false;
 }
 
 function numOrUndef(v: unknown): number | undefined {

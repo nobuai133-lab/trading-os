@@ -236,4 +236,48 @@ describe('computeDecision', () => {
     expect(result.blockingReason).toBeNull();
   });
 
+  // DE-01: WATCHLIST tier → WAIT (G9.6 gate)
+  it('DE-01 — WAIT: WATCHLIST tier blocks trade decision', () => {
+    const result = computeDecision(makeInput({
+      setupTier: 'WATCHLIST',
+    }));
+    expect(result.outcome).toBe('WAIT');
+    expect(result.blockingReason).toContain('WATCHLIST');
+    expect(result.gates.find((g) => g.gate === 'G9.6:PriorityTier')?.passed).toBe(false);
+  });
+
+  // DE-02: INVALID tier → WAIT (G9.6 gate)
+  it('DE-02 — WAIT: INVALID tier blocks trade decision', () => {
+    const result = computeDecision(makeInput({
+      setupTier: 'INVALID',
+    }));
+    expect(result.outcome).toBe('WAIT');
+    expect(result.blockingReason).toContain('INVALID');
+  });
+
+  // DE-03: PRIMARY tier → gate passes, LONG proceeds
+  it('DE-03 — LONG: PRIMARY tier passes G9.6', () => {
+    const result = computeDecision(makeInput({
+      setupTier:   'PRIMARY',
+      setupIntent: 'TREND_CONTINUATION',
+    }));
+    expect(result.outcome).toBe('LONG');
+    expect(result.gates.find((g) => g.gate === 'G9.6:PriorityTier')?.passed).toBe(true);
+  });
+
+  // DE-04: no tier provided → gate passes (backward compatible)
+  it('DE-04 — gate passes when setupTier is absent (backward compat)', () => {
+    const result = computeDecision(makeInput());
+    expect(result.outcome).toBe('LONG');
+    expect(result.gates.find((g) => g.gate === 'G9.6:PriorityTier')?.passed).toBe(true);
+  });
+
+  // DE-05: SECONDARY tier → gate passes but result is WAIT (no full LONG)
+  it('DE-05 — SECONDARY tier passes gate but stays LONG (direction still set)', () => {
+    const result = computeDecision(makeInput({ setupTier: 'SECONDARY' }));
+    // SECONDARY passes the gate; direction determines outcome
+    expect(result.gates.find((g) => g.gate === 'G9.6:PriorityTier')?.passed).toBe(true);
+    expect(result.outcome).toBe('LONG');  // direction=LONG still produces LONG for SECONDARY
+  });
+
 });

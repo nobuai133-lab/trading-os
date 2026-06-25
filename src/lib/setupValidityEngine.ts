@@ -1,7 +1,8 @@
 import type {
   SetupValidity, SetupValidityResult, EntryZoneSource,
-  TrendAlignment, SetupActionability, TradeGrade,
+  TrendAlignment, SetupActionability, TradeGrade, SetupIntent,
 } from '@/types';
+import { validateCounterTrend } from './counterTrendValidator';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -61,6 +62,11 @@ export interface SetupValidityInput {
   timeframe:   string;
   // Optional grade from signal — will be capped if needed
   signalGrade?: string;
+  // ITOS enrichment — optional; when provided, enables full counter-trend validation
+  intent?:            SetupIntent;
+  zoneQualityScore?:  number;   // 0–100; defaults to 100 when absent (institutional gate bypassed)
+  decayedConfidence?: number;   // 0–100; defaults to 100 when absent
+  remainingLifePct?:  number;   // 0–100; defaults to 100 when absent
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -164,8 +170,8 @@ export function assessSetupValidity(input: SetupValidityInput): SetupValidityRes
     volumeEvidence,      // 5: volume confirms
   ];
 
-  const satisfied: string[] = requiredConfs.filter((_, i) => confirmed[i]);
-  const missing:   string[] = requiredConfs.filter((_, i) => !confirmed[i]);
+  let satisfied: string[] = requiredConfs.filter((_, i) => confirmed[i]);
+  let missing:   string[] = requiredConfs.filter((_, i) => !confirmed[i]);
 
   // ── Step 5: Validity + actionability based on alignment ────────────────────
   let validity:     SetupValidity;
@@ -183,7 +189,34 @@ export function assessSetupValidity(input: SetupValidityInput): SetupValidityRes
     reason        = `${direction} aligns with HTF (${htfBias}) and LTF (${ltfBias}) trend`;
   } else if (trendAlignment === 'COUNTER_TREND') {
     // One side aligns, one opposes
-    if (satisfied.length >= MIN_CONFIRMATIONS_FOR_ACTIONABLE) {
+    if (input.intent === 'COUNTER_TREND' || input.intent === 'REVERSAL') {
+      // Full institutional validation path
+      const ctResult = validateCounterTrend({
+        intent:            input.intent,
+        direction,
+        trendAlignment,
+        entryZoneSource,
+        zoneQualityScore:  input.zoneQualityScore  ?? 100,
+        decayedConfidence: input.decayedConfidence ?? 100,
+        remainingLifePct:  input.remainingLifePct  ?? 100,
+        liquidityEvidence, structureEvidence, acceptanceEvidence, momentumEvidence, volumeEvidence,
+      });
+      satisfied     = ctResult.satisfiedConfirmations;
+      missing       = ctResult.missingConfirmations;
+      validity      = 'WATCH_ONLY';
+      confidenceCap = 60;
+      gradeCap      = 'B';
+      if (ctResult.approved) {
+        actionability = 'CONFIRMATION_REQUIRED';
+        reason        = ctResult.reason;
+      } else {
+        actionability = 'WATCHING';
+        confidenceCap = 40;
+        gradeCap      = 'C';
+        blocked       = true;
+        reason        = ctResult.reason;
+      }
+    } else if (satisfied.length >= MIN_CONFIRMATIONS_FOR_ACTIONABLE) {
       validity      = 'WATCH_ONLY';
       actionability = 'CONFIRMATION_REQUIRED';
       confidenceCap = 60;
@@ -206,6 +239,32 @@ export function assessSetupValidity(input: SetupValidityInput): SetupValidityRes
       gradeCap      = '—';
       blocked       = true;
       reason        = `Counter-trend ${direction} from demo/static data — invalid for live use`;
+    } else if (input.intent === 'REVERSAL') {
+      // Full reversal validation path for CONFLICT setups
+      const ctResult = validateCounterTrend({
+        intent:            'REVERSAL',
+        direction,
+        trendAlignment,
+        entryZoneSource,
+        zoneQualityScore:  input.zoneQualityScore  ?? 100,
+        decayedConfidence: input.decayedConfidence ?? 100,
+        remainingLifePct:  input.remainingLifePct  ?? 100,
+        liquidityEvidence, structureEvidence, acceptanceEvidence, momentumEvidence, volumeEvidence,
+      });
+      satisfied     = ctResult.satisfiedConfirmations;
+      missing       = ctResult.missingConfirmations;
+      validity      = 'WATCH_ONLY';
+      confidenceCap = 50;
+      gradeCap      = 'C';
+      if (ctResult.approved) {
+        actionability = 'CONFIRMATION_REQUIRED';
+        reason        = ctResult.reason;
+      } else {
+        actionability = 'WATCHING';
+        confidenceCap = 40;
+        blocked       = true;
+        reason        = ctResult.reason;
+      }
     } else if (satisfied.length >= requiredConfs.length) {
       // All 6 reversal confirmations met — upgrade to CONFIRMATION_REQUIRED
       validity      = 'WATCH_ONLY';

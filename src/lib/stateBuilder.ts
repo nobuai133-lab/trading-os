@@ -3,12 +3,19 @@ import { fetchOHLCV, fetchCurrentPrice, marketDataEngine } from './marketData';
 import { runStrategyAnalysis, deriveHtfBias } from './strategyEngine';
 import { classifySetup } from './setupClassifier';
 import { assessSetupValidity, applyGradeCap } from './setupValidityEngine';
+import { classifySetupIntent } from './setupIntentEngine';
+import { computeConfidenceDecay } from './setupDecayEngine';
+import { scoreEntryZoneQuality } from './entryZoneQuality';
+import { rankSetup } from './setupPriorityEngine';
 import type {
   DashboardState, Trade, PendingSetup, AntiReentryState,
   RangeMemory, SetupFingerprint, CooldownState, KeyLevel,
   TradeStatus, SLStatus, SetupStatus, Decision, Direction,
   TradeGrade, Regime, SystemMode, AgentReport, AgentType,
   MarketDataStatus, MarketDataBadge,
+  EntryZoneSource, SetupExplainability, MultiTfAgreement,
+  SetupIntent, TrendAlignment, SetupValidityResult, EntryZoneQualityResult,
+  SetupPriorityTier, SetupValidity, ConfidenceDecay,
 } from '@/types';
 
 const EMPTY_TRADE: Trade = {
@@ -219,30 +226,100 @@ export async function buildDashboardState(): Promise<DashboardState> {
     decision = 'WAIT';
   }
 
-  // ── Pending setups — assess validity and filter INVALID ──────────────────────
+  // ── Pending setups — full ITOS pipeline ─────────────────────────────────────
   const rawPending = pendingSetups.map((s) => {
-    const dir      = s.direction as Direction;
-    const classi   = classifySetup(dir, htfBias, ltfBias);
+    const dir             = s.direction as Direction;
+    const timeframe       = s.timeframe ?? '4H';
+    const sAny            = s as Record<string, unknown>;  // safe cast for schema-optional fields
+    const entryZoneSource = (typeof sAny.entryZoneSource === 'string' ? sAny.entryZoneSource : 'UNKNOWN') as EntryZoneSource;
+    const classi          = classifySetup(dir, htfBias, ltfBias);
+
+    // Step 1: Intent classification
+    const intentResult = classifySetupIntent({
+      direction:    dir,
+      htfBias,
+      ltfBias,
+      regime:       regime4H,
+      entryZoneSource,
+      trendAlignment: classi.trendAlignment,
+    });
+
+    // Step 2: Confidence decay
+    const initialConf = typeof s.confidence === 'number' ? s.confidence : (typeof sAny.confidence === 'number' ? sAny.confidence : 75);
+    const decay = computeConfidenceDecay({
+      initialConfidence: initialConf,
+      createdAt:         s.createdAt,
+      timeframe,
+    });
+
+    // Step 3: Zone quality
+    const zoneQuality = scoreEntryZoneQuality({
+      entryZoneSource,
+      trendAlignment:     classi.trendAlignment,
+      liquidityEvidence:  !!sAny.liquidityEvidence,
+      structureEvidence:  !!sAny.structureEvidence,
+      acceptanceEvidence: !!sAny.acceptanceEvidence,
+      momentumEvidence:   !!sAny.momentumEvidence,
+      volumeEvidence:     !!sAny.volumeEvidence,
+      ageMinutes:         decay.ageMinutes,
+      timeframe,
+    });
+
+    // Step 4: Validity (with ITOS enrichment)
     const validity = assessSetupValidity({
       htfBias,
       ltfBias,
-      regime:        regime4H,
-      currentPrice:  livePrice,
-      direction:     dir,
-      entryZoneLow:  s.entryZoneLow  ?? 0,
-      entryZoneHigh: s.entryZoneHigh ?? 0,
-      createdAt:     s.createdAt,
-      timeframe:     s.timeframe ?? '4H',
-      signalGrade:   s.grade ?? 'B',
+      regime:             regime4H,
+      currentPrice:       livePrice,
+      direction:          dir,
+      entryZoneLow:       s.entryZoneLow  ?? 0,
+      entryZoneHigh:      s.entryZoneHigh ?? 0,
+      entryZoneSource,
+      createdAt:          s.createdAt,
+      timeframe,
+      signalGrade:        s.grade ?? 'B',
+      intent:             intentResult.intent,
+      zoneQualityScore:   zoneQuality.score,
+      decayedConfidence:  decay.currentConfidence,
+      remainingLifePct:   decay.remainingLifePct,
     });
-    return { s, dir, classi, validity };
+
+    // Step 5: Priority ranking
+    const rank = rankSetup({
+      intent:            intentResult.intent,
+      trendAlignment:    classi.trendAlignment,
+      validity:          validity.validity,
+      blocked:           validity.blocked,
+      confidenceCap:     validity.confidenceCap,
+      decayedConfidence: decay.currentConfidence,
+      zoneQualityScore:  zoneQuality.score,
+      remainingLifePct:  decay.remainingLifePct,
+      satisfiedCount:    validity.satisfiedConfirmations.length,
+      requiredCount:     validity.requiredConfirmations.length,
+    });
+
+    // Step 6: Multi-TF agreement (uses available bias data)
+    const multiTfAgreement = computeMultiTfAgreement(dir, htfBias, ltfBias, ema20, ema50);
+
+    // Step 7: Explainability
+    const explainability: SetupExplainability = {
+      intent:      intentResult.intent,
+      rank,
+      decay,
+      zoneQuality,
+      multiTfAgreement,
+      topReasons: buildTopReasons(intentResult.intent, classi.trendAlignment, validity, zoneQuality),
+      topRisks:   buildTopRisks(validity, multiTfAgreement, decay),
+      summary:    buildSummary(rank.tier, intentResult.intent, validity.validity),
+    };
+
+    return { s, dir, classi, validity, intentResult, decay, zoneQuality, rank, explainability };
   });
 
   // INVALID setups are completely filtered — EXPIRED and WATCH_ONLY are kept but labeled
   const filteredPending = rawPending.filter(({ validity }) => validity.validity !== 'INVALID');
 
-  const pending: PendingSetup[] = filteredPending.map(({ s, dir, classi, validity }, i) => {
-    // Cap grade based on validity assessment (gradeCap is a ceiling)
+  const pending: PendingSetup[] = filteredPending.map(({ s, dir, classi, validity, intentResult, decay, zoneQuality, rank, explainability }, i) => {
     const effectiveGrade = applyGradeCap(s.grade ?? 'B', validity.gradeCap);
     return {
       id:              s.id,
@@ -255,13 +332,18 @@ export async function buildDashboardState(): Promise<DashboardState> {
       tp2:             s.tp2 ?? 0,
       tp3:             s.tp3 ?? 0,
       rr:              s.rr  ?? 0,
-      status:          validity.blocked ? 'WATCHING' as SetupStatus : 'WATCHING' as SetupStatus,
+      status:          'WATCHING' as SetupStatus,
       note:            s.note,
       lifecycleStatus: validity.validity === 'EXPIRED' ? 'EXPIRED' : s.lifecycleStatus as any,
       fingerprintId:   s.fingerprintId  ?? undefined,
       classification:  classi,
       validity,
       createdAt:       s.createdAt.toISOString(),
+      intent:          intentResult.intent,
+      rank,
+      decay,
+      zoneQuality,
+      explainability,
     };
   });
 
@@ -375,6 +457,78 @@ export async function buildDashboardState(): Promise<DashboardState> {
     alertMessage: null,
     marketDataStatus,
   };
+}
+
+// ── ITOS helper functions ─────────────────────────────────────────────────────
+
+function computeMultiTfAgreement(
+  direction: Direction,
+  htfBias:   string,
+  ltfBias:   string,
+  ema20:     number,
+  ema50:     number,
+): MultiTfAgreement {
+  const isLong = direction === 'LONG';
+
+  const htfUpper = htfBias.toUpperCase();
+  const ltfUpper = ltfBias.toUpperCase();
+  const htfBull  = htfUpper.includes('BULL');
+  const htfBear  = htfUpper.includes('BEAR');
+  const ltfBull  = ltfUpper.includes('BULL');
+  const ltfBear  = ltfUpper.includes('BEAR');
+
+  const htfScore = isLong
+    ? (htfBull ? 100 : htfBear ? 0 : 50)
+    : (htfBear ? 100 : htfBull ? 0 : 50);
+
+  const execScore = isLong
+    ? (ltfBull ? 100 : ltfBear ? 0 : 50)
+    : (ltfBear ? 100 : ltfBull ? 0 : 50);
+
+  const emaDiff = ema20 > 0 && ema50 > 0 ? (ema20 - ema50) / ema50 : 0;
+  const triggerScore = isLong
+    ? (emaDiff > 0.01 ? 100 : emaDiff > 0 ? 60 : emaDiff > -0.005 ? 40 : 0)
+    : (emaDiff < -0.01 ? 100 : emaDiff < 0 ? 60 : emaDiff < 0.005 ? 40 : 0);
+
+  const composite = Math.round(htfScore * 0.4 + execScore * 0.35 + triggerScore * 0.25);
+  const htfVeto   = htfScore < 40;
+
+  return {
+    htfScore,
+    executionScore: execScore,
+    triggerScore,
+    composite,
+    htfVeto,
+    reason: htfVeto
+      ? `HTF veto — ${htfBias} opposes ${direction} (htfScore: ${htfScore})`
+      : `Multi-TF agreement: ${composite}/100 (HTF ${htfScore}, Exec ${execScore}, Trigger ${triggerScore})`,
+  };
+}
+
+function buildTopReasons(intent: SetupIntent, alignment: TrendAlignment, validity: SetupValidityResult, zoneQuality: EntryZoneQualityResult): string[] {
+  const reasons: string[] = [];
+  if (alignment === 'ALIGNED') reasons.push('HTF + LTF bias aligned with direction');
+  if (intent === 'TREND_CONTINUATION') reasons.push('Trend continuation — highest-probability intent');
+  if (intent === 'BREAKOUT_CONTINUATION' || intent === 'BREAKDOWN_CONTINUATION') reasons.push('Confirmed breakout/breakdown retest');
+  if (validity.satisfiedConfirmations.length > 0) reasons.push(`${validity.satisfiedConfirmations.length} reversal confirmations met`);
+  if (zoneQuality.score >= 70) reasons.push(`Strong entry zone (${zoneQuality.score}/100)`);
+  return reasons.slice(0, 3);
+}
+
+function buildTopRisks(validity: SetupValidityResult, mtf: MultiTfAgreement, decay: ConfidenceDecay): string[] {
+  const risks: string[] = [];
+  if (mtf.htfVeto) risks.push('HTF bias opposes direction — institutional veto');
+  if (validity.missingConfirmations.length > 0) risks.push(`${validity.missingConfirmations.length} reversal confirmations missing`);
+  if (decay.remainingLifePct < 30) risks.push(`Setup age: ${decay.remainingLifePct}% life remaining`);
+  if (validity.blocked) risks.push('Setup blocked — watch-only status');
+  return risks.slice(0, 3);
+}
+
+function buildSummary(tier: SetupPriorityTier, intent: SetupIntent, validity: SetupValidity): string {
+  if (tier === 'INVALID') return 'Setup invalid — not eligible for trading';
+  if (tier === 'WATCHLIST') return `${intent.replace(/_/g, ' ')} — monitoring only (${validity})`;
+  if (tier === 'SECONDARY') return `${intent.replace(/_/g, ' ')} — secondary setup, confirmation needed`;
+  return `${intent.replace(/_/g, ' ')} — primary setup ready`;
 }
 
 // ── Synthetic agents from analysis data ──────────────────────────────────────
