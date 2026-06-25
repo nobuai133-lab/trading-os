@@ -2,12 +2,14 @@ export { marketDataEngine }    from './engine';
 export { ProviderManager }     from './providerManager';
 export { validateOHLCV, timeframeToMs } from './validator';
 
-export { KrakenProvider }      from './providers/KrakenProvider';
-export { BinanceProvider }     from './providers/BinanceProvider';
-export { BybitProvider }       from './providers/BybitProvider';
-export { CoinbaseProvider }    from './providers/CoinbaseProvider';
-export { TradingViewProvider } from './providers/TradingViewProvider';
-export { BinanceWsProvider }   from './providers/BinanceWsProvider';
+export { GateioPerpProvider }     from './providers/GateioPerpProvider';
+export { BinanceFuturesProvider } from './providers/BinanceFuturesProvider';
+export { KrakenProvider }         from './providers/KrakenProvider';
+export { BinanceProvider }        from './providers/BinanceProvider';
+export { BybitProvider }          from './providers/BybitProvider';
+export { CoinbaseProvider }       from './providers/CoinbaseProvider';
+export { TradingViewProvider }    from './providers/TradingViewProvider';
+export { BinanceWsProvider }      from './providers/BinanceWsProvider';
 
 export type { IMarketDataProvider } from './providers/IMarketDataProvider';
 export type {

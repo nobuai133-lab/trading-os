@@ -1,11 +1,13 @@
-import { ProviderManager }      from './providerManager';
+import { ProviderManager }          from './providerManager';
 import { validateOHLCV, timeframeToMs } from './validator';
-import { KrakenProvider }       from './providers/KrakenProvider';
-import { BinanceProvider }      from './providers/BinanceProvider';
-import { TradingViewProvider }  from './providers/TradingViewProvider';
-import { BybitProvider }        from './providers/BybitProvider';
-import { CoinbaseProvider }     from './providers/CoinbaseProvider';
-import { BinanceWsProvider }    from './providers/BinanceWsProvider';
+import { GateioPerpProvider }      from './providers/GateioPerpProvider';
+import { BinanceFuturesProvider }  from './providers/BinanceFuturesProvider';
+import { BybitProvider }           from './providers/BybitProvider';
+import { CoinbaseProvider }        from './providers/CoinbaseProvider';
+import { KrakenProvider }          from './providers/KrakenProvider';
+import { TradingViewProvider }     from './providers/TradingViewProvider';
+import { BinanceProvider }         from './providers/BinanceProvider';
+import { BinanceWsProvider }       from './providers/BinanceWsProvider';
 import { eventBus }             from '../../core/eventBus';
 import { logger }               from '../logger';
 import type { OHLCVBar, Ticker, ValidationResult, ProviderHealth, FailoverEvent } from './types';
@@ -18,12 +20,14 @@ class MarketDataEngine {
 
   constructor() {
     this.manager = new ProviderManager([
-      new BinanceProvider(),
-      new TradingViewProvider(),
-      new BinanceWsProvider(),
+      new GateioPerpProvider(),
+      new BinanceFuturesProvider(),
       new BybitProvider(),
       new CoinbaseProvider(),
       new KrakenProvider(),
+      new TradingViewProvider(),
+      new BinanceProvider(),
+      new BinanceWsProvider(),
     ]);
   }
 
@@ -68,6 +72,10 @@ class MarketDataEngine {
 
   getFailoverLog(): FailoverEvent[] {
     return this.manager.getFailoverLog();
+  }
+
+  getActiveProviderBasis(): 'PERP' | 'SPOT' {
+    return this.manager.getActive().priceBasis;
   }
 
   // ── fallback execution ───────────────────────────────────────────────────────

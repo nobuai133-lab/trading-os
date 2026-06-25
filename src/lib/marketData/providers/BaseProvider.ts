@@ -5,8 +5,9 @@ const WINDOW_MS  = 60_000;
 const MAX_CHECKS = 100;
 
 export abstract class BaseProvider implements IMarketDataProvider {
-  abstract readonly name:     string;
-  abstract readonly priority: number;
+  abstract readonly name:       string;
+  abstract readonly priority:   number;
+  abstract readonly priceBasis: 'PERP' | 'SPOT';
 
   protected available    = true;
   protected latencySamples: number[] = [];

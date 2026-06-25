@@ -1,8 +1,9 @@
 import type { OHLCVBar, Ticker, OrderBook, FundingRate, OpenInterest, ProviderHealth } from '../types';
 
 export interface IMarketDataProvider {
-  readonly name:     string;
-  readonly priority: number;
+  readonly name:       string;
+  readonly priority:   number;
+  readonly priceBasis: 'PERP' | 'SPOT';
 
   isAvailable(): boolean;
   getHealth():   ProviderHealth;

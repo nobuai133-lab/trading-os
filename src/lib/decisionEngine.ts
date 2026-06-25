@@ -4,6 +4,7 @@
 
 import type { EvidenceState, StrategyState, MemoryState, ProviderState, RiskState, TradeState } from '@/kernel/types';
 import type { DecisionOutcome, DecisionResult, WeightedEvidenceItem, DecisionGateResult } from '@/types';
+import { classifySetup } from './setupClassifier';
 
 export interface DecisionInput {
   evidence:  EvidenceState;
@@ -140,6 +141,22 @@ function runGates(
   if (weightedScore < 40)
     return fail('G9:Score', `Weighted score ${weightedScore}/${MAX_SCORE} below threshold (40)`, 'WAIT');
   gates.push({ gate: 'G9:Score', passed: true });
+
+  // G9.5: Counter-trend gate — CONFLICT setups require all confirmations before proceeding
+  if (!active) {
+    const dir = trade.direction?.toUpperCase();
+    if (dir === 'LONG' || dir === 'SHORT') {
+      const classi = classifySetup(dir as 'LONG' | 'SHORT', input.strategy.htfBias, input.strategy.ltfBias);
+      if (classi.trendAlignment === 'CONFLICT') {
+        return fail(
+          'G9.5:CounterTrend',
+          `Counter-trend ${dir}: ${classi.reason}`,
+          'WAIT',
+        );
+      }
+    }
+  }
+  gates.push({ gate: 'G9.5:CounterTrend', passed: true });
 
   // G10: Final outcome derivation
   gates.push({ gate: 'G10:Final', passed: true });

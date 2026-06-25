@@ -92,6 +92,8 @@ export default function StickyHeader({ state }: Props) {
             provider={marketStatus.provider}
             warning={marketStatus.warning}
             analysisAgeSeconds={marketStatus.candleAgeSeconds ?? undefined}
+            priceBasis={marketStatus.priceBasis}
+            basisWarning={marketStatus.basisWarning}
           />
         )}
       </div>

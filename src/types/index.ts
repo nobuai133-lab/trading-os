@@ -18,6 +18,36 @@ export type AlertType = 'warn' | 'danger' | 'success';
 
 export type SetupStatus = 'WATCHING' | 'TRIGGERED' | 'INVALIDATED';
 
+// ── Setup classification (Part B) ─────────────────────────────────────────────
+
+export type SetupType =
+  | 'TREND_CONTINUATION_LONG'
+  | 'TREND_CONTINUATION_SHORT'
+  | 'COUNTER_TREND_REVERSAL_LONG'
+  | 'COUNTER_TREND_REVERSAL_SHORT'
+  | 'RANGE_REVERSION_LONG'
+  | 'RANGE_REVERSION_SHORT'
+  | 'BREAKOUT_LONG'
+  | 'BREAKDOWN_SHORT'
+  | 'RETEST_LONG'
+  | 'RETEST_SHORT'
+  | 'LIQUIDITY_SWEEP_LONG'
+  | 'LIQUIDITY_SWEEP_SHORT'
+  | 'INVALID_CONFLICT';
+
+export type TrendAlignment   = 'ALIGNED' | 'COUNTER_TREND' | 'CONFLICT';
+export type SetupActionability = 'WATCHING' | 'CONFIRMATION_REQUIRED' | 'READY' | 'INVALID';
+
+export interface SetupClassification {
+  setupType:              SetupType;
+  trendAlignment:         TrendAlignment;
+  actionability:          SetupActionability;
+  requiredConfirmations:  string[];
+  satisfiedConfirmations: string[];
+  missingConfirmations:   string[];
+  reason:                 string;
+}
+
 export type SetupLifecycleStatus =
   | 'NEW' | 'ACTIVE' | 'TRADED' | 'COMPLETED'
   | 'EXPIRED' | 'INVALIDATED' | 'STALE';
@@ -95,6 +125,7 @@ export interface PendingSetup {
   lifecycleStatus?: SetupLifecycleStatus;
   fingerprintId?:  string;
   tradeCount?:     number;
+  classification?: SetupClassification;
 }
 
 export interface Trade {
@@ -204,6 +235,15 @@ export interface MarketDataStatus {
   isAnalysisFresh:          boolean;
   badge:                    MarketDataBadge;
   warning?:                 string;
+  // ── Provenance extension ───────────────────────────────────────────────────
+  tradedExchange?:          string;
+  tradedSymbol?:            string;
+  referenceMarket?:         string;
+  priceBasis?:              'PERP' | 'SPOT';
+  fallbackActive?:          boolean;
+  providerRank?:            number;
+  basisWarning?:            string;
+  providerWarning?:         string;
 }
 
 export interface DashboardState {

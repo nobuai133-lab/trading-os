@@ -18,6 +18,9 @@ export interface MarketStatus {
   warning?:             string;
   lastFetchedAt:        string;
   error:                boolean;
+  priceBasis?:          'PERP' | 'SPOT';
+  basisWarning?:        string;
+  fallbackActive?:      boolean;
 }
 
 const POLL_MS = 2_000;
@@ -66,9 +69,12 @@ export function useMarketStatusFeed(): MarketStatus {
           isAnalysisFresh:      Boolean(d.isAnalysisFresh),
           latestPriceTimestamp: typeof d.latestPriceTimestamp === 'string' ? d.latestPriceTimestamp : '',
           latestClosedCandleTs: typeof d.latestClosedCandleTs === 'string' ? d.latestClosedCandleTs : null,
-          warning:              typeof d.warning === 'string' ? d.warning : undefined,
+          warning:              typeof d.warning      === 'string' ? d.warning      : undefined,
           lastFetchedAt:        new Date().toISOString(),
           error:                false,
+          priceBasis:           d.priceBasis === 'PERP' || d.priceBasis === 'SPOT' ? d.priceBasis : undefined,
+          basisWarning:         typeof d.basisWarning === 'string' ? d.basisWarning : undefined,
+          fallbackActive:       Boolean(d.fallbackActive),
         };
 
         setStatus(next);

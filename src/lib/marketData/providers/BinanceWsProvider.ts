@@ -7,8 +7,9 @@ import type { OHLCVBar, Ticker, OrderBook, FundingRate, OpenInterest } from '../
  * Currently deferred: REST fallback is BinanceProvider (priority 1).
  */
 export class BinanceWsProvider extends BaseProvider {
-  readonly name     = 'binance-ws';
-  readonly priority = 3;
+  readonly name       = 'binance-ws';
+  readonly priority   = 21;
+  readonly priceBasis = 'SPOT' as const;
 
   // Not yet implemented — always unavailable
   protected override available = false;

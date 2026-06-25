@@ -16,9 +16,11 @@ interface Props {
   provider?:           string;
   warning?:            string;
   analysisAgeSeconds?: number;
+  priceBasis?:         'PERP' | 'SPOT';
+  basisWarning?:       string;
 }
 
-export default function MarketDataStatusBadge({ badge, provider, warning, analysisAgeSeconds }: Props) {
+export default function MarketDataStatusBadge({ badge, provider, warning, analysisAgeSeconds, priceBasis, basisWarning }: Props) {
   const s = BADGE_STYLES[badge] ?? BADGE_STYLES.ERROR;
 
   const ageLabel =
@@ -29,21 +31,26 @@ export default function MarketDataStatusBadge({ badge, provider, warning, analys
       : '';
 
   const providerLabel =
-    provider && provider !== 'db-fallback' && badge === 'LIVE'
+    provider && provider !== 'db-fallback'
       ? provider
       : undefined;
+
+  const showSpotWarning = priceBasis === 'SPOT' && !!basisWarning;
+  const tooltip = basisWarning ?? warning ?? `${s.label}${ageLabel}`;
 
   return (
     <div className="flex items-center gap-1.5">
       <span
         className="text-[8px] font-bold px-1.5 py-0.5 rounded-chip tracking-wider uppercase"
         style={{ color: s.color, background: s.bg, border: `1px solid ${s.border}` }}
-        title={warning ?? `${s.label}${ageLabel}`}
+        title={tooltip}
       >
         {s.label}{ageLabel}
       </span>
       {providerLabel && (
-        <span className="text-[8px] text-muted2 truncate max-w-[64px]">{providerLabel}</span>
+        <span className="text-[8px] text-muted2 truncate max-w-[72px]" title={tooltip}>
+          {providerLabel}{showSpotWarning ? ' (spot)' : ''}
+        </span>
       )}
     </div>
   );

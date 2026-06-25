@@ -24,8 +24,9 @@ function toPair(symbol: string): string {
 }
 
 export class KrakenProvider extends BaseProvider {
-  readonly name     = 'kraken';
-  readonly priority = 6;
+  readonly name       = 'kraken';
+  readonly priority   = 5;
+  readonly priceBasis = 'SPOT' as const;
 
   async fetchOHLCV(symbol: string, timeframe: string, limit = 200): Promise<OHLCVBar[]> {
     return this.timed(async () => {

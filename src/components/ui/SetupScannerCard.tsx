@@ -1,6 +1,6 @@
 'use client';
 
-import type { PendingSetup, SetupStatus, SetupLifecycleStatus } from '@/types';
+import type { PendingSetup, SetupStatus, SetupLifecycleStatus, TrendAlignment, SetupActionability } from '@/types';
 import GlassCard from '@/components/ui/GlassCard';
 
 const STATUS_STYLE: Record<SetupStatus, { color: string; bg: string; border: string; label: string }> = {
@@ -21,6 +21,19 @@ const LIFECYCLE_COLOR: Record<SetupLifecycleStatus, string> = {
 
 const GRADE_COLOR: Record<string, string> = {
   'A+': '#00E5A8', 'A': '#00E5A8', 'B': '#FBBF24', 'C': '#FF3B5C', '—': '#64748B',
+};
+
+const ALIGNMENT_STYLE: Record<TrendAlignment, { color: string; label: string }> = {
+  ALIGNED:       { color: '#00E5A8', label: 'ALIGNED'      },
+  COUNTER_TREND: { color: '#FBBF24', label: 'COUNTER-TREND' },
+  CONFLICT:      { color: '#FF3B5C', label: 'CONFLICT'      },
+};
+
+const ACTIONABILITY_STYLE: Record<SetupActionability, { color: string; label: string }> = {
+  READY:                  { color: '#00E5A8', label: 'READY'          },
+  CONFIRMATION_REQUIRED:  { color: '#FBBF24', label: 'NEEDS CONFIRM'  },
+  WATCHING:               { color: '#38BDF8', label: 'WATCHING'        },
+  INVALID:                { color: '#FF3B5C', label: 'INVALID'         },
 };
 
 interface Props {
@@ -45,6 +58,7 @@ export default function SetupScannerCard({ setups, currentPrice }: Props) {
           const ss    = STATUS_STYLE[setup.status];
           const inZ   = currentPrice >= setup.entryZone.low && currentPrice <= setup.entryZone.high;
           const dirColor = setup.direction === 'SHORT' ? '#FF3B5C' : '#00E5A8';
+          const cls   = setup.classification;
 
           return (
             <div
@@ -92,6 +106,35 @@ export default function SetupScannerCard({ setups, currentPrice }: Props) {
                 </div>
               </div>
 
+              {/* Row 1b: classification row — only shown when classification present */}
+              {cls && (
+                <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                  <span
+                    className="text-[8px] font-bold px-1.5 py-0.5 rounded-chip tracking-wider"
+                    style={{
+                      color:      ALIGNMENT_STYLE[cls.trendAlignment].color,
+                      background: `${ALIGNMENT_STYLE[cls.trendAlignment].color}14`,
+                      border:     `1px solid ${ALIGNMENT_STYLE[cls.trendAlignment].color}30`,
+                    }}
+                  >
+                    {ALIGNMENT_STYLE[cls.trendAlignment].label}
+                  </span>
+                  <span
+                    className="text-[8px] font-bold px-1.5 py-0.5 rounded-chip tracking-wider"
+                    style={{
+                      color:      ACTIONABILITY_STYLE[cls.actionability].color,
+                      background: `${ACTIONABILITY_STYLE[cls.actionability].color}14`,
+                      border:     `1px solid ${ACTIONABILITY_STYLE[cls.actionability].color}30`,
+                    }}
+                  >
+                    {ACTIONABILITY_STYLE[cls.actionability].label}
+                  </span>
+                  <span className="text-[8px] text-muted2 truncate max-w-[180px]" title={cls.reason}>
+                    {cls.reason}
+                  </span>
+                </div>
+              )}
+
               {/* Row 2: entry zone */}
               <div className="flex items-center gap-1 mb-1.5">
                 <span className="text-[9px] text-muted2 w-10">ZONE</span>
@@ -122,9 +165,7 @@ export default function SetupScannerCard({ setups, currentPrice }: Props) {
                   <div key={label} className="flex flex-col gap-0.5">
                     <span className="text-[8px] text-muted2 font-bold tracking-wider">{label}</span>
                     <span className="text-[10px] font-semibold tabular-nums" style={{ color }}>
-                      ${Math.round(value / 100) * 100 === value
-                        ? value.toLocaleString()
-                        : value.toLocaleString()}
+                      ${value.toLocaleString()}
                     </span>
                   </div>
                 ))}
@@ -135,6 +176,23 @@ export default function SetupScannerCard({ setups, currentPrice }: Props) {
                 <span className="text-[9px] text-muted2">{setup.note}</span>
                 <span className="text-[9px] font-bold text-blue">RR {setup.rr.toFixed(1)}R</span>
               </div>
+
+              {/* Row 5: missing confirmations — only for counter-trend/conflict setups */}
+              {cls && cls.missingConfirmations.length > 0 && (
+                <div className="mt-2 pt-1.5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span className="text-[8px] font-bold text-muted2 tracking-wider uppercase mb-1 block">
+                    Missing confirmations ({cls.missingConfirmations.length}/{cls.requiredConfirmations.length})
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    {cls.missingConfirmations.map((c) => (
+                      <div key={c} className="flex items-center gap-1">
+                        <span className="text-[8px]" style={{ color: '#FF3B5C' }}>✕</span>
+                        <span className="text-[8px] text-muted2">{c}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

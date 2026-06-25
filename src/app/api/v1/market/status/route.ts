@@ -7,9 +7,13 @@ export const dynamic = 'force-dynamic';
 
 const SYMBOL    = 'BTCUSDT';
 const TIMEFRAME = '4H';
-const TICKER_STALE_S    = 30;
 const CANDLE_4H_STALE_S = 5 * 3600;  // 5 hours
-const ANALYSIS_STALE_S  = 60;
+
+const NO_CACHE = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate',
+  'Pragma':        'no-cache',
+  'Expires':       '0',
+};
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -18,42 +22,51 @@ export async function GET(): Promise<NextResponse> {
       fetchCurrentPrice(SYMBOL),
     ]);
 
-    const provider              = marketDataEngine.getActiveProvider();
-    const latestPriceTimestamp  = new Date().toISOString();
-    const lastBar               = bars[bars.length - 1];
-    const latestClosedCandleTs  = new Date(lastBar.openTime).toISOString();
-    const candleAgeSeconds      = Math.round((Date.now() - lastBar.openTime) / 1000);
-    const analysisAgeSeconds    = 0; // just computed
+    const provider             = marketDataEngine.getActiveProvider();
+    const priceBasis           = marketDataEngine.getActiveProviderBasis();
+    const latestPriceTimestamp = new Date().toISOString();
+    const lastBar              = bars[bars.length - 1];
+    const latestClosedCandleTs = new Date(lastBar.openTime).toISOString();
+    const candleAgeSeconds     = Math.round((Date.now() - lastBar.openTime) / 1000);
 
-    const isTickerFresh   = true;
-    const isCandleFresh   = candleAgeSeconds < CANDLE_4H_STALE_S;
-    const isAnalysisFresh = true;
+    const isCandleFresh = candleAgeSeconds < CANDLE_4H_STALE_S;
+    const fallbackActive = priceBasis === 'SPOT';
 
     let badge: MarketDataBadge = 'LIVE';
     let warning: string | undefined;
+
     if (!isCandleFresh) {
       badge   = 'CANDLE_CLOSED';
       warning = `Latest 4H candle is ${Math.round(candleAgeSeconds / 3600)}h old`;
     }
 
-    const NO_CACHE = {
-      'Cache-Control': 'no-store, no-cache, must-revalidate',
-      'Pragma':        'no-cache',
-      'Expires':       '0',
-    };
+    if (fallbackActive) {
+      badge   = badge === 'LIVE' ? 'STALE' : badge;
+      warning = warning
+        ? `${warning}; spot price reference (${provider}) — may differ from BTCUSDT perpetual`
+        : `Spot price reference (${provider}) — may differ from BTCUSDT perpetual`;
+    }
+
     return NextResponse.json({
       provider,
-      symbol:                    SYMBOL,
-      timeframe:                 TIMEFRAME,
-      latestPrice:               price,
+      priceBasis,
+      tradedExchange:    priceBasis === 'PERP' ? provider : 'binance-futures (target)',
+      tradedSymbol:      'BTCUSDT',
+      referenceMarket:   priceBasis === 'PERP' ? 'perpetual' : 'spot',
+      fallbackActive,
+      providerRank:      1,
+      basisWarning:      fallbackActive ? `Using ${provider} spot as perpetual reference` : undefined,
+      symbol:                      SYMBOL,
+      timeframe:                   TIMEFRAME,
+      latestPrice:                 price,
       latestPriceTimestamp,
-      latestClosedCandle:        latestClosedCandleTs,
+      latestClosedCandle:          latestClosedCandleTs,
       latestClosedCandleTimestamp: latestClosedCandleTs,
       candleAgeSeconds,
-      analysisAgeSeconds,
-      isTickerFresh,
+      analysisAgeSeconds:          0,
+      isTickerFresh:               true,
       isCandleFresh,
-      isAnalysisFresh,
+      isAnalysisFresh:             true,
       badge,
       warning,
     }, { headers: NO_CACHE });
@@ -61,20 +74,27 @@ export async function GET(): Promise<NextResponse> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({
-      provider:                  'none',
-      symbol:                    SYMBOL,
-      timeframe:                 TIMEFRAME,
-      latestPrice:               0,
-      latestPriceTimestamp:      new Date().toISOString(),
-      latestClosedCandle:        null,
+      provider:                    'none',
+      priceBasis:                  'SPOT' as const,
+      tradedExchange:              'none',
+      tradedSymbol:                SYMBOL,
+      referenceMarket:             'unknown',
+      fallbackActive:              false,
+      providerRank:                0,
+      basisWarning:                undefined,
+      symbol:                      SYMBOL,
+      timeframe:                   TIMEFRAME,
+      latestPrice:                 0,
+      latestPriceTimestamp:        new Date().toISOString(),
+      latestClosedCandle:          null,
       latestClosedCandleTimestamp: null,
-      candleAgeSeconds:          null,
-      analysisAgeSeconds:        null,
-      isTickerFresh:             false,
-      isCandleFresh:             false,
-      isAnalysisFresh:           false,
-      badge:                     'ERROR' as MarketDataBadge,
-      warning:                   msg,
-    }, { status: 503, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0' } });
+      candleAgeSeconds:            null,
+      analysisAgeSeconds:          null,
+      isTickerFresh:               false,
+      isCandleFresh:               false,
+      isAnalysisFresh:             false,
+      badge:                       'ERROR' as MarketDataBadge,
+      warning:                     msg,
+    }, { status: 503, headers: NO_CACHE });
   }
 }

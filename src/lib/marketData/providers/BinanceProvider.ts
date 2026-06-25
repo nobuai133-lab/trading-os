@@ -10,10 +10,11 @@ const TF_MAP: Record<string, string> = {
 };
 
 export class BinanceProvider extends BaseProvider {
-  readonly name     = 'binance';
-  readonly priority = 1;
+  readonly name       = 'binance';
+  readonly priority   = 22;
+  readonly priceBasis = 'SPOT' as const;
 
-  // Geo-blocked on Railway US — starts unavailable, health-check promotes it
+  // Binance spot geo-blocked on Railway US — lowest priority, starts unavailable
   protected override available = false;
 
   async fetchOHLCV(symbol: string, timeframe: string, limit = 200): Promise<OHLCVBar[]> {

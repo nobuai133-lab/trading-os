@@ -9,11 +9,9 @@ const TF_MAP: Record<string, string> = {
 };
 
 export class BybitProvider extends BaseProvider {
-  readonly name     = 'bybit';
-  readonly priority = 4;
-
-  // Geo-blocked on Railway US — starts unavailable
-  protected override available = false;
+  readonly name       = 'bybit';
+  readonly priority   = 3;
+  readonly priceBasis = 'PERP' as const; // linear perpetual (category=linear)
 
   async fetchOHLCV(symbol: string, timeframe: string, limit = 200): Promise<OHLCVBar[]> {
     return this.timed(async () => {

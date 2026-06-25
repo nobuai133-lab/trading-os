@@ -1,6 +1,7 @@
 import { prisma } from './db';
 import { fetchOHLCV, fetchCurrentPrice, marketDataEngine } from './marketData';
 import { runStrategyAnalysis, deriveHtfBias } from './strategyEngine';
+import { classifySetup } from './setupClassifier';
 import type {
   DashboardState, Trade, PendingSetup, AntiReentryState,
   RangeMemory, SetupFingerprint, CooldownState, KeyLevel,
@@ -72,6 +73,7 @@ export async function buildDashboardState(): Promise<DashboardState> {
 
   // Provenance tracking
   let priceProvider       = 'db-fallback';
+  let priceBasis: 'PERP' | 'SPOT' = 'SPOT';
   let analysisTimestamp   = snapshot4H?.snapshotAt?.toISOString() ?? new Date(0).toISOString();
   let latestClosedCandleTs = analysisTimestamp;
 
@@ -82,6 +84,7 @@ export async function buildDashboardState(): Promise<DashboardState> {
     ]);
     livePrice       = price;
     priceProvider   = marketDataEngine.getActiveProvider();
+    priceBasis      = marketDataEngine.getActiveProviderBasis();
     analysisTimestamp = new Date().toISOString();
     if (bars.length > 0) {
       latestClosedCandleTs = new Date(bars[bars.length - 1].openTime).toISOString();
@@ -125,6 +128,8 @@ export async function buildDashboardState(): Promise<DashboardState> {
     badge = 'LIVE';
   }
 
+  const fallbackActive = priceBasis === 'SPOT' && priceProvider !== 'db-fallback';
+
   const marketDataStatus: MarketDataStatus = {
     provider:              priceProvider,
     candleProvider:        priceProvider,
@@ -139,7 +144,13 @@ export async function buildDashboardState(): Promise<DashboardState> {
     isCandleFresh,
     isAnalysisFresh,
     badge,
-    warning: marketWarning,
+    warning:               marketWarning,
+    priceBasis,
+    fallbackActive,
+    tradedSymbol:          'BTCUSDT',
+    tradedExchange:        priceBasis === 'PERP' ? priceProvider : 'binance-futures (target)',
+    referenceMarket:       priceBasis === 'PERP' ? 'perpetual' : 'spot',
+    basisWarning:          fallbackActive ? `Spot reference (${priceProvider}) — may differ from BTCUSDT perpetual` : undefined,
   };
 
   const htfBias = deriveHtfBias(regime1D as any);
@@ -208,22 +219,27 @@ export async function buildDashboardState(): Promise<DashboardState> {
   }
 
   // ── Pending setups ────────────────────────────────────────────────────────────
-  const pending: PendingSetup[] = pendingSetups.map((s, i) => ({
-    id:              s.id,
-    label:           `Setup ${String.fromCharCode(65 + i)}`,
-    direction:       s.direction as Direction,
-    grade:           (s.grade ?? 'B') as TradeGrade,
-    entryZone:       { low: s.entryZoneLow ?? 0, high: s.entryZoneHigh ?? 0 },
-    sl:              s.sl  ?? 0,
-    tp1:             s.tp1 ?? 0,
-    tp2:             s.tp2 ?? 0,
-    tp3:             s.tp3 ?? 0,
-    rr:              s.rr  ?? 0,
-    status:          'WATCHING' as SetupStatus,
-    note:            s.note,
-    lifecycleStatus: s.lifecycleStatus as any,
-    fingerprintId:   s.fingerprintId   ?? undefined,
-  }));
+  const pending: PendingSetup[] = pendingSetups.map((s, i) => {
+    const dir    = s.direction as Direction;
+    const classi = classifySetup(dir, htfBias, ltfBias);
+    return {
+      id:              s.id,
+      label:           `Setup ${String.fromCharCode(65 + i)}`,
+      direction:       dir,
+      grade:           (s.grade ?? 'B') as TradeGrade,
+      entryZone:       { low: s.entryZoneLow ?? 0, high: s.entryZoneHigh ?? 0 },
+      sl:              s.sl  ?? 0,
+      tp1:             s.tp1 ?? 0,
+      tp2:             s.tp2 ?? 0,
+      tp3:             s.tp3 ?? 0,
+      rr:              s.rr  ?? 0,
+      status:          'WATCHING' as SetupStatus,
+      note:            s.note,
+      lifecycleStatus: s.lifecycleStatus as any,
+      fingerprintId:   s.fingerprintId   ?? undefined,
+      classification:  classi,
+    };
+  });
 
   // ── Anti-reentry ──────────────────────────────────────────────────────────────
   const topRange  = rangeMems[0];

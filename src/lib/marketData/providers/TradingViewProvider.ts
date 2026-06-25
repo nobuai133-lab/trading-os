@@ -7,8 +7,9 @@ import type { OHLCVBar, Ticker, OrderBook, FundingRate, OpenInterest } from '../
  * Priority 2 for local development environments.
  */
 export class TradingViewProvider extends BaseProvider {
-  readonly name     = 'tradingview';
-  readonly priority = 2;
+  readonly name       = 'tradingview';
+  readonly priority   = 20;
+  readonly priceBasis = 'SPOT' as const;
 
   // Only available when MCP bridge is running locally
   protected override available = false;

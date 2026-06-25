@@ -17,8 +17,9 @@ function toCbPair(symbol: string): string {
 }
 
 export class CoinbaseProvider extends BaseProvider {
-  readonly name     = 'coinbase';
-  readonly priority = 5;
+  readonly name       = 'coinbase';
+  readonly priority   = 4;
+  readonly priceBasis = 'SPOT' as const;
 
   async fetchOHLCV(symbol: string, timeframe: string, limit = 200): Promise<OHLCVBar[]> {
     return this.timed(async () => {
