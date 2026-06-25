@@ -7,5 +7,8 @@ cmds = ["npm ci"]
 [phases.build]
 cmds = ["npm run build"]
 
+[variables]
+DATABASE_URL = "postgresql://placeholder:placeholder@placeholder:5432/placeholder"
+
 [start]
 cmd = "npx prisma migrate deploy && npm start"
