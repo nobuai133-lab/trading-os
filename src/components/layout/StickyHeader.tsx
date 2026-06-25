@@ -5,6 +5,8 @@ import type { DashboardState, Decision } from '@/types';
 import { confColorClass } from '@/lib/utils';
 import { useTradeStore } from '@/store';
 import { SCENARIOS } from '@/data/scenarios';
+import { useMarketStatusFeed } from '@/hooks/useMarketStatusFeed';
+import MarketDataStatusBadge from '@/components/ui/MarketDataStatusBadge';
 
 const DECISION_COLORS: Record<Decision, { text: string; bg: string; border: string }> = {
   LONG:       { text: '#00E5A8', bg: 'rgba(0,229,168,0.12)',   border: 'rgba(0,229,168,0.25)'  },
@@ -30,18 +32,22 @@ export default function StickyHeader({ state }: Props) {
   const dc         = DECISION_COLORS[state.decision];
   const [devOpen, setDevOpen]   = useState(false);
   const [isLive,  setIsLive]    = useState(false);
-  const prevPrice               = useRef<number>(state.price);
   const setState   = useTradeStore((s) => s.setState);
 
-  // Flash live dot when price changes
+  // Live tick price — polls /api/v1/market/status every 2s
+  const marketStatus = useMarketStatusFeed();
+  const displayPrice = marketStatus.latestPrice > 0 ? marketStatus.latestPrice : state.price;
+  const prevPrice    = useRef<number>(displayPrice);
+
+  // Flash live dot when tick price changes
   useEffect(() => {
-    if (state.price !== prevPrice.current) {
-      prevPrice.current = state.price;
+    if (displayPrice !== prevPrice.current) {
+      prevPrice.current = displayPrice;
       setIsLive(true);
       const t = setTimeout(() => setIsLive(false), 800);
       return () => clearTimeout(t);
     }
-  }, [state.price]);
+  }, [displayPrice]);
 
   return (
     <header
@@ -69,8 +75,8 @@ export default function StickyHeader({ state }: Props) {
         <span className="text-[11px] font-semibold text-muted">{state.timeframe}</span>
       </div>
 
-      {/* Center: price — flashes green on tick */}
-      <div className="flex-1 flex justify-center">
+      {/* Center: live tick price + market badge */}
+      <div className="flex-1 flex flex-col items-center justify-center gap-0.5">
         <span
           className="text-[15px] font-bold tabular-nums tracking-tight"
           style={{
@@ -78,8 +84,16 @@ export default function StickyHeader({ state }: Props) {
             transition: 'color 0.2s',
           }}
         >
-          ${state.price.toLocaleString()}
+          {displayPrice > 0 ? `$${displayPrice.toLocaleString()}` : '—'}
         </span>
+        {!marketStatus.error && (
+          <MarketDataStatusBadge
+            badge={marketStatus.badge}
+            provider={marketStatus.provider}
+            warning={marketStatus.warning}
+            analysisAgeSeconds={marketStatus.candleAgeSeconds ?? undefined}
+          />
+        )}
       </div>
 
       {/* Right: decision + confidence + dev toggle */}

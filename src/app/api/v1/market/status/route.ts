@@ -36,6 +36,11 @@ export async function GET(): Promise<NextResponse> {
       warning = `Latest 4H candle is ${Math.round(candleAgeSeconds / 3600)}h old`;
     }
 
+    const NO_CACHE = {
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma':        'no-cache',
+      'Expires':       '0',
+    };
     return NextResponse.json({
       provider,
       symbol:                    SYMBOL,
@@ -51,7 +56,7 @@ export async function GET(): Promise<NextResponse> {
       isAnalysisFresh,
       badge,
       warning,
-    }, { headers: { 'Cache-Control': 'no-store' } });
+    }, { headers: NO_CACHE });
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -70,6 +75,6 @@ export async function GET(): Promise<NextResponse> {
       isAnalysisFresh:           false,
       badge:                     'ERROR' as MarketDataBadge,
       warning:                   msg,
-    }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+    }, { status: 503, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0' } });
   }
 }

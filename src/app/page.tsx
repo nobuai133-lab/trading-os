@@ -1,8 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
 import { useTradeStore, useUIStore } from '@/store';
-import { SCENARIOS } from '@/data/scenarios';
 import { useLiveFeed } from '@/hooks/useLiveFeed';
 
 import AlertBanner    from '@/components/layout/AlertBanner';
@@ -21,14 +19,10 @@ import ReplayPanel             from '@/components/dashboard/ReplayPanel';
 import BacktestPanel           from '@/components/dashboard/BacktestPanel';
 
 export default function Home() {
-  const { state, setState } = useTradeStore();
+  const { state } = useTradeStore();
   const { activeTab }       = useUIStore();
 
   useLiveFeed();
-
-  useEffect(() => {
-    setState(SCENARIOS.setup);
-  }, []);
 
   if (!state) {
     return (
