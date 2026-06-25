@@ -40,7 +40,7 @@ export async function buildDashboardState(): Promise<DashboardState> {
         orderBy: { activatedAt: 'desc' },
       }),
       prisma.marketSnapshot.findFirst({
-        where: { symbol: process.env.PRIMARY_SYMBOL ?? 'BTCUSDT' },
+        where: { symbol: 'BTCUSDT' },
         orderBy: { snapshotAt: 'desc' },
       }),
     ]);
