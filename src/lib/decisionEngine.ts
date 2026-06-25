@@ -14,6 +14,10 @@ export interface DecisionInput {
   trade:     TradeState;
 }
 
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const STRATEGY_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour — decision is WAIT if strategy is older
+
 // ── Weight table ──────────────────────────────────────────────────────────────
 // Evidence category name → weight (must sum to 95 after Volume excluded)
 
@@ -74,6 +78,19 @@ function runGates(
   function fail(gate: string, reason: string, outcome: DecisionOutcome) {
     gates.push({ gate, passed: false, reason });
     return { outcome, gates, blockingReason: reason };
+  }
+
+  // G0: Strategy freshness — only enforced when real analysis data has been seen before.
+  // Epoch timestamp (lastAnalyzed = 0) means "never analyzed" — other gates handle that.
+  const lastAnalyzedTs = new Date(input.strategy.lastAnalyzed).getTime();
+  const neverAnalyzed  = lastAnalyzedTs === 0;
+  if (!neverAnalyzed) {
+    const ageMs = Date.now() - lastAnalyzedTs;
+    if (ageMs > STRATEGY_MAX_AGE_MS) {
+      const ageMin = Math.round(ageMs / 60_000);
+      return fail('G0:Freshness', `Strategy data ${ageMin}m stale — market scan required`, 'WAIT');
+    }
+    gates.push({ gate: 'G0:Freshness', passed: true });
   }
 
   // G1: Provider health — at least one provider must be available

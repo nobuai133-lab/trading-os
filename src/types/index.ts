@@ -187,6 +187,25 @@ export interface KeyLevel {
   source:    'SWING' | 'LIQUIDITY';
 }
 
+export type MarketDataBadge = 'LIVE' | 'CANDLE_CLOSED' | 'STALE' | 'FALLBACK' | 'MOCK' | 'ERROR';
+
+export interface MarketDataStatus {
+  provider:                 string;
+  candleProvider:           string;
+  symbol:                   string;
+  timeframe:                string;
+  latestPrice:              number;
+  latestPriceTimestamp:     string;
+  latestClosedCandleTs:     string;
+  candleAgeSeconds:         number;
+  analysisAgeSeconds:       number;
+  isTickerFresh:            boolean;
+  isCandleFresh:            boolean;
+  isAnalysisFresh:          boolean;
+  badge:                    MarketDataBadge;
+  warning?:                 string;
+}
+
 export interface DashboardState {
   symbol:            string;
   timeframe:         string;
@@ -210,6 +229,7 @@ export interface DashboardState {
   thesis:            ThesisState;
   memory:            MemoryRecord;
   alertMessage:      AlertMessage | null;
+  marketDataStatus?: MarketDataStatus;
 }
 
 // ── Memory Intelligence Layer types ──────────────────────────────────────────

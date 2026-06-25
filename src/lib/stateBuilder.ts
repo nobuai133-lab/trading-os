@@ -1,11 +1,12 @@
 import { prisma } from './db';
-import { fetchOHLCV, fetchCurrentPrice } from './marketData';
+import { fetchOHLCV, fetchCurrentPrice, marketDataEngine } from './marketData';
 import { runStrategyAnalysis, deriveHtfBias } from './strategyEngine';
 import type {
   DashboardState, Trade, PendingSetup, AntiReentryState,
   RangeMemory, SetupFingerprint, CooldownState, KeyLevel,
   TradeStatus, SLStatus, SetupStatus, Decision, Direction,
   TradeGrade, Regime, SystemMode, AgentReport, AgentType,
+  MarketDataStatus, MarketDataBadge,
 } from '@/types';
 
 const EMPTY_TRADE: Trade = {
@@ -69,12 +70,22 @@ export async function buildDashboardState(): Promise<DashboardState> {
   let keyLevels: KeyLevel[] = [];
   let confidence  = 50;
 
+  // Provenance tracking
+  let priceProvider       = 'db-fallback';
+  let analysisTimestamp   = snapshot4H?.snapshotAt?.toISOString() ?? new Date(0).toISOString();
+  let latestClosedCandleTs = analysisTimestamp;
+
   try {
     const [bars, price] = await Promise.all([
       fetchOHLCV('BTCUSDT', '4H', 720),
       fetchCurrentPrice('BTCUSDT'),
     ]);
-    livePrice  = price;
+    livePrice       = price;
+    priceProvider   = marketDataEngine.getActiveProvider();
+    analysisTimestamp = new Date().toISOString();
+    if (bars.length > 0) {
+      latestClosedCandleTs = new Date(bars[bars.length - 1].openTime).toISOString();
+    }
     const analysis = runStrategyAnalysis(bars, '4H');
     regime4H   = analysis.regime;
     ema20      = analysis.ema20;
@@ -90,6 +101,46 @@ export async function buildDashboardState(): Promise<DashboardState> {
       regime1D     = a1D.regime;
     } catch { /* use DB snapshot fallback */ }
   } catch { /* use DB snapshot fallback */ }
+
+  // ── Market data status (provenance + freshness) ───────────────────────────────
+  const nowMs               = Date.now();
+  const analysisAgeSeconds  = Math.round((nowMs - new Date(analysisTimestamp).getTime()) / 1000);
+  const candleAgeSeconds    = Math.round((nowMs - new Date(latestClosedCandleTs).getTime()) / 1000);
+  const CANDLE_4H_STALE_S   = 5 * 3600; // 5 hours = one 4H candle + buffer
+  const ANALYSIS_STALE_S    = 60;
+
+  const isTickerFresh   = priceProvider !== 'db-fallback';
+  const isCandleFresh   = candleAgeSeconds < CANDLE_4H_STALE_S;
+  const isAnalysisFresh = analysisAgeSeconds < ANALYSIS_STALE_S;
+
+  let badge: MarketDataBadge;
+  let marketWarning: string | undefined;
+  if (!isTickerFresh) {
+    badge = 'STALE';
+    marketWarning = `Using cached snapshot (${Math.round(analysisAgeSeconds / 60)}m old)`;
+  } else if (!isCandleFresh) {
+    badge = 'CANDLE_CLOSED';
+    marketWarning = `Latest 4H candle is ${Math.round(candleAgeSeconds / 3600)}h old`;
+  } else {
+    badge = 'LIVE';
+  }
+
+  const marketDataStatus: MarketDataStatus = {
+    provider:              priceProvider,
+    candleProvider:        priceProvider,
+    symbol:                'BTCUSDT',
+    timeframe:             '4H',
+    latestPrice:           livePrice,
+    latestPriceTimestamp:  new Date().toISOString(),
+    latestClosedCandleTs,
+    candleAgeSeconds,
+    analysisAgeSeconds,
+    isTickerFresh,
+    isCandleFresh,
+    isAnalysisFresh,
+    badge,
+    warning: marketWarning,
+  };
 
   const htfBias = deriveHtfBias(regime1D as any);
   const ltfBias = deriveHtfBias(regime4H as any);
@@ -282,6 +333,7 @@ export async function buildDashboardState(): Promise<DashboardState> {
     thesis: { score: confidence, assumptions: [] },
     memory,
     alertMessage: null,
+    marketDataStatus,
   };
 }
 

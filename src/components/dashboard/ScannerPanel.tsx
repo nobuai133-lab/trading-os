@@ -13,6 +13,7 @@ import CooldownBanner from '@/components/ui/CooldownBanner';
 import RangeStatusCard from '@/components/ui/RangeStatusCard';
 import SetupFingerprintCard from '@/components/ui/SetupFingerprintCard';
 import KeyLevelsCard from '@/components/ui/KeyLevelsCard';
+import MarketDataStatusBadge from '@/components/ui/MarketDataStatusBadge';
 
 const ANALYSIS_INTERVAL_MS = 15 * 60_000;
 
@@ -109,6 +110,18 @@ export default function ScannerPanel({ state }: Props) {
               </span>
             </div>
           </div>
+
+          {/* Market data freshness badge */}
+          {state.marketDataStatus && (
+            <div className="mt-2 pt-2" style={{ borderTop: '1px solid rgba(71,85,105,0.2)' }}>
+              <MarketDataStatusBadge
+                badge={state.marketDataStatus.badge}
+                provider={state.marketDataStatus.provider}
+                warning={state.marketDataStatus.warning}
+                analysisAgeSeconds={state.marketDataStatus.analysisAgeSeconds}
+              />
+            </div>
+          )}
         </GlassCard>
       </div>
 

@@ -16,8 +16,11 @@ const log = logger.withContext({ service: 'dashboard' });
 // the legacy base build. Kernel fields are authoritative; untracked fields fall through.
 // Rollback: set KERNEL_AUTHORITY=false on Railway (Level C).
 
+const CACHE_TTL_MS = 30_000; // rebuild at most every 30 s
+
 export class DashboardService {
   private cache: DashboardState | null = null;
+  private cacheExpiresAt = 0;
   private rebuilding = false;
   private subscribed = false;
 
@@ -46,8 +49,17 @@ export class DashboardService {
   }
 
   async getState(): Promise<DashboardState> {
+    this.subscribe(); // idempotent — wires event listeners on first call
     if (!this.cache) {
+      // First call — build synchronously so caller gets a real result
       this.cache = await this._build();
+      this.cacheExpiresAt = Date.now() + CACHE_TTL_MS;
+      void persistDashboardState(this.cache);
+      return this.cache;
+    }
+    if (Date.now() > this.cacheExpiresAt) {
+      // TTL expired — trigger background rebuild, return stale state immediately
+      void this.rebuild();
     }
     return this.cache;
   }
@@ -58,6 +70,7 @@ export class DashboardService {
     try {
       const state  = await this._build();
       this.cache   = state;
+      this.cacheExpiresAt = Date.now() + CACHE_TTL_MS;
       await persistDashboardState(state);
       log.debug('rebuilt', { authority: getAuthorityMode() });
     } catch (err) {

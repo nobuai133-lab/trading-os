@@ -10,7 +10,11 @@ import type { TradeMemoryRecord, RiskBudget, DecisionResult, SimilarityResult } 
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function rec(overrides: Partial<TradeMemoryRecord> & { id?: string; hoursAgo?: number; dayAgo?: number }): TradeMemoryRecord {
+// Fixed midday UTC — used in time-sensitive tests to avoid UTC-midnight boundary failures.
+const FIXED_NOW = new Date('2025-06-15T12:00:00.000Z');
+
+function rec(overrides: Partial<TradeMemoryRecord> & { id?: string; hoursAgo?: number; dayAgo?: number; _now?: Date }): TradeMemoryRecord {
+  const now = overrides._now ?? new Date();
   const offsetMs = overrides.hoursAgo != null
     ? overrides.hoursAgo * 3_600_000
     : overrides.dayAgo != null
@@ -45,8 +49,8 @@ function rec(overrides: Partial<TradeMemoryRecord> & { id?: string; hoursAgo?: n
     outcome:               'WIN',
     resultR:               1.5,
     closeReason:           'TP1_HIT',
-    openedAt:              new Date(Date.now() - offsetMs - 1800_000).toISOString(),
-    closedAt:              new Date(Date.now() - offsetMs).toISOString(),
+    openedAt:              new Date(now.getTime() - offsetMs - 1800_000).toISOString(),
+    closedAt:              new Date(now.getTime() - offsetMs).toISOString(),
     durationMs:            1_800_000,
     fingerprint: {
       trend: 'BULL', emaAlignment: 'ALIGNED', htfBias: 'BULL', ltfBias: 'BULL',
@@ -62,7 +66,7 @@ function rec(overrides: Partial<TradeMemoryRecord> & { id?: string; hoursAgo?: n
     lessons: [],
     tags:    [],
   };
-  const { id: _id, hoursAgo: _h, dayAgo: _d, ...rest } = overrides;
+  const { id: _id, hoursAgo: _h, dayAgo: _d, _now: _n, ...rest } = overrides;
   return { ...base, ...rest };
 }
 
@@ -113,9 +117,9 @@ describe('computePortfolioMetrics', () => {
   });
 
   it('PM-02: daily loss from same-day records', () => {
-    const r1 = rec({ id: 't1', outcome: 'LOSS', resultR: -1.5, hoursAgo: 1 });
-    const r2 = rec({ id: 't2', outcome: 'LOSS', resultR: -1.0, hoursAgo: 2 });
-    const m  = computePortfolioMetrics([r1, r2]);
+    const r1 = rec({ id: 't1', outcome: 'LOSS', resultR: -1.5, hoursAgo: 1, _now: FIXED_NOW });
+    const r2 = rec({ id: 't2', outcome: 'LOSS', resultR: -1.0, hoursAgo: 2, _now: FIXED_NOW });
+    const m  = computePortfolioMetrics([r1, r2], FIXED_NOW);
     expect(m.dailyLossR).toBeCloseTo(2.5);
     expect(m.dailyPnlR).toBeCloseTo(-2.5);
     expect(m.tradeCountToday).toBe(2);
@@ -256,8 +260,8 @@ describe('computeRiskOffice', () => {
 
   it('RO-07: daily loss limit → kill switch BLOCKED', () => {
     const metrics = computePortfolioMetrics([
-      rec({ id: 't1', outcome: 'LOSS', resultR: -3.5, hoursAgo: 1 }),
-    ]);
+      rec({ id: 't1', outcome: 'LOSS', resultR: -3.5, hoursAgo: 1, _now: FIXED_NOW }),
+    ], FIXED_NOW);
     const r = computeRiskOffice(input({ metrics }));
     expect(r.decision).toBe('BLOCKED');
     expect(r.killSwitchActive).toBe(true);
@@ -351,8 +355,8 @@ describe('computeRiskOffice', () => {
   it('RO-17: daily budget ≥70% consumed → CAUTION, size reduced', () => {
     // 2.2R / 3.0R max = 73% used
     const metrics = computePortfolioMetrics([
-      rec({ id: 't1', outcome: 'LOSS', resultR: -2.2, hoursAgo: 1 }),
-    ]);
+      rec({ id: 't1', outcome: 'LOSS', resultR: -2.2, hoursAgo: 1, _now: FIXED_NOW }),
+    ], FIXED_NOW);
     const r = computeRiskOffice(input({ metrics }));
     expect(r.riskState).toBe('CAUTION');
     expect(r.positionSize.riskStateMultiplier).toBe(0.75);
