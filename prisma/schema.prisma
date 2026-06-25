@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Single-row cache of the full DashboardState JSON — polled by the frontend.
+model SystemState {
+  id        Int      @id @default(autoincrement())
+  state     Json
+  updatedAt DateTime @updatedAt
+}
+
+model Setup {
+  id              String   @id @default(cuid())
+  fingerprintId   String?  @unique
+  symbol          String
+  timeframe       String
+  direction       String   // LONG | SHORT
+  rangeHigh       Float?
+  rangeLow        Float?
+  entryZoneLow    Float?
+  entryZoneHigh   Float?
+  sl              Float?
+  tp1             Float?
+  tp2             Float?
+  tp3             Float?
+  rr              Float?
+  grade           String   @default("B")
+  confidence      Int      @default(0)
+  thesisType      String   @default("")
+  note            String   @default("")
+  lifecycleStatus String   @default("NEW")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  trades          Trade[]
+}
+
+model Trade {
+  id          String    @id @default(cuid())
+  setupId     String?
+  setup       Setup?    @relation(fields: [setupId], references: [id])
+  symbol      String
+  direction   String
+  mode        String    @default("PAPER") // PAPER | LIVE
+  entryPrice  Float?
+  sl          Float?
+  slCurrent   Float?
+  slStatus    String    @default("INITIAL")
+  tp1         Float?
+  tp2         Float?
+  tp3         Float?
+  tp1Hit      Boolean   @default(false)
+  tp2Hit      Boolean   @default(false)
+  tp3Hit      Boolean   @default(false)
+  slHit       Boolean   @default(false)
+  status      String    @default("WAITING")
+  riskPct     Float?
+  sizeBtc     Float?
+  openedAt    DateTime?
+  closedAt    DateTime?
+  closeReason String?
+  resultR     Float?
+  lesson      String    @default("")
+  mistake     String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([symbol, status])
+}
+
+model RangeMemory {
+  id                 String   @id
+  symbol             String
+  timeframe          String
+  rangeHigh          Float
+  rangeLow           Float
+  midline            Float
+  width              Float
+  status             String   @default("NEW") // NEW|ACTIVE|TRADED|STALE|RESET
+  tradeCount         Int      @default(0)
+  lastTradeDirection String?
+  lastTradeResult    String?
+  freshLiquidity     Boolean  @default(true)
+  reentryAllowed     Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  lastTouchedAt      DateTime @default(now())
+
+  @@unique([symbol, timeframe, rangeHigh, rangeLow])
+  @@index([symbol, timeframe])
+}
+
+model SetupFingerprint {
+  id            String    @id
+  symbol        String
+  timeframe     String
+  direction     String
+  rangeHigh     Float
+  rangeLow      Float
+  entryZoneHigh Float
+  entryZoneLow  Float
+  thesisType    String    @default("")
+  status        String    @default("NEW")
+  alreadyTraded Boolean   @default(false)
+  tradedAt      DateTime?
+  result        String?
+  createdAt     DateTime  @default(now())
+
+  @@index([symbol, timeframe, alreadyTraded])
+}
+
+model Cooldown {
+  id            Int       @id @default(autoincrement())
+  symbol        String
+  timeframe     String
+  direction     String?
+  activatedAt   DateTime  @default(now())
+  totalBars     Int       @default(5)
+  remainingBars Int       @default(5)
+  reason        String?
+  active        Boolean   @default(true)
+
+  @@index([symbol, timeframe, active])
+}
+
+model MarketSnapshot {
+  id         Int      @id @default(autoincrement())
+  symbol     String
+  timeframe  String
+  price      Float
+  open       Float?
+  high       Float?
+  low        Float?
+  regime     String?
+  ema20      Float?
+  ema50      Float?
+  atr        Float?
+  atr4H      Float?
+  snapshotAt DateTime @default(now())
+
+  @@index([symbol, snapshotAt])
+}
+
+model WebhookEvent {
+  id          Int      @id @default(autoincrement())
+  receivedAt  DateTime @default(now())
+  symbol      String?
+  signal      String?
+  setupId     String?
+  payload     Json
+  processed   Boolean  @default(false)
+  duplicate   Boolean  @default(false)
+  blocked     Boolean  @default(false)
+  blockReason String?
+  error       String?
+
+  @@index([setupId, receivedAt])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  sentAt    DateTime @default(now())
+  channel   String   @default("telegram")
+  message   String
+  eventType String
+  success   Boolean  @default(true)
+  error     String?
+}

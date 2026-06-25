@@ -1,46 +1,31 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { fetchOHLCV, fetchCurrentPrice } from '@/lib/marketData';
+import { runStrategyAnalysis } from '@/lib/strategyEngine';
 
-// Proxies to the btc-analysis server (port 3001) full analysis endpoint.
-// The btc-analysis server refreshes every 15 min and maintains its own
-// CDP session — we don't need to open competing connections.
-export async function GET() {
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const symbol    = req.nextUrl.searchParams.get('symbol')    ?? 'BTCUSDT';
+  const timeframe = req.nextUrl.searchParams.get('timeframe') ?? '4H';
+
   try {
-    const r = await fetch('http://localhost:3001/api/data', {
-      cache: 'no-store',
-    });
-    if (!r.ok) return NextResponse.json({ error: 'Analysis server unavailable' }, { status: 503 });
-    const data = await r.json();
+    const [bars, price] = await Promise.all([
+      fetchOHLCV(symbol, timeframe, 200),
+      fetchCurrentPrice(symbol),
+    ]);
 
-    // Normalise btc-analysis format → trading-os format
-    const setupAInvalid = data.invalidated;
-    const setupAInZone  = data.inSetupAZone;
-
-    const rawRegime  = data.regime1D ?? data.regime4H ?? 'RANGE';
-    const regime     = rawRegime === 'BULLISH' ? 'BULL'
-                     : rawRegime === 'BEARISH' ? 'BEAR'
-                     : rawRegime;
+    const result = runStrategyAnalysis(bars);
 
     return NextResponse.json({
-      symbol:     data.symbol,
-      price:      data.price,
-      regime,
-      regimeNote: data.regime1DNote ?? '',
-      htfBias:    rawRegime === 'BULLISH' || rawRegime === 'BULL'   ? 'BULLISH'
-                : rawRegime === 'BEARISH' || rawRegime === 'BEAR'   ? 'BEARISH'
-                : 'NEUTRAL',
-      setupA: {
-        status:  setupAInvalid ? 'INVALIDATED' : setupAInZone ? 'TRIGGERED' : 'WATCHING',
-        inZone:  setupAInZone  ?? false,
-        tp1Hit:  data.tp1Hit   ?? false,
-        tp2Hit:  data.tp2Hit   ?? false,
-        tp3Hit:  data.tp3Hit   ?? false,
-      },
-      setupB: {
-        status: 'WATCHING',
-        inZone: false,
-      },
-      nextRefreshMs: data.nextRefreshMs ?? 0,
-      ts: Date.now(),
+      symbol,
+      timeframe,
+      price,
+      regime:  result.regime,
+      ema20:   result.ema20,
+      ema50:   result.ema50,
+      atr:     result.atr,
+      ts:      Date.now(),
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';

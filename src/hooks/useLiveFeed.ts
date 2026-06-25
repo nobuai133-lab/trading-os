@@ -1,55 +1,30 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useTradeStore } from '@/store';
+import type { DashboardState } from '@/types';
 
-const PRICE_INTERVAL_MS    = 3_000;        //  3 seconds
-const ANALYSIS_INTERVAL_MS = 15 * 60_000;  // 15 minutes
+const STATE_INTERVAL_MS = 10_000; // 10 seconds
 
 export function useLiveFeed() {
-  const setPrice      = useTradeStore((s) => s.setPrice);
-  const applyAnalysis = useTradeStore((s) => s.applyAnalysis);
+  const setState = useTradeStore((s) => s.setState);
 
-  const fetchPrice = useCallback(async () => {
+  const fetchState = useCallback(async () => {
     try {
-      const r = await fetch('/api/price');
+      const r = await fetch('/api/state', { cache: 'no-store' });
       if (!r.ok) return;
-      const data = await r.json();
-      if (typeof data.price === 'number') setPrice(data.price);
+      const data: DashboardState = await r.json();
+      if (data && typeof data.price === 'number') {
+        setState(data);
+      }
     } catch {
-      // TradingView not running — silent
+      // Network or parse error — silent, retry on next interval
     }
-  }, [setPrice]);
+  }, [setState]);
 
-  const fetchAnalysis = useCallback(async () => {
-    try {
-      const r = await fetch('/api/analysis');
-      if (!r.ok) return;
-      const data = await r.json();
-      if (data.error || !data.price) return;
-      applyAnalysis({
-        price:   data.price,
-        regime:  data.regime,
-        htfBias: data.htfBias,
-        setupA:  data.setupA,
-        setupB:  data.setupB,
-      });
-    } catch {
-      // silent
-    }
-  }, [applyAnalysis]);
-
-  // Price tick
   useEffect(() => {
-    fetchPrice();
-    const id = setInterval(fetchPrice, PRICE_INTERVAL_MS);
+    fetchState();
+    const id = setInterval(fetchState, STATE_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [fetchPrice]);
-
-  // Analysis refresh (also fires immediately on mount)
-  useEffect(() => {
-    fetchAnalysis();
-    const id = setInterval(fetchAnalysis, ANALYSIS_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [fetchAnalysis]);
+  }, [fetchState]);
 }

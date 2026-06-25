@@ -1,15 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { fetchCurrentPrice } from '@/lib/marketData';
 
-// Proxies to the btc-analysis price server (port 3001)
-// which maintains a persistent CDP connection to TradingView.
-export async function GET() {
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const symbol = req.nextUrl.searchParams.get('symbol') ?? 'BTCUSDT';
   try {
-    const r = await fetch('http://localhost:3001/api/price', {
-      cache: 'no-store',
-    });
-    if (!r.ok) return NextResponse.json({ error: 'Price server unavailable' }, { status: 503 });
-    const data = await r.json();
-    return NextResponse.json(data);
+    const price = await fetchCurrentPrice(symbol);
+    return NextResponse.json({ symbol, price, ts: Date.now() });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 503 });
